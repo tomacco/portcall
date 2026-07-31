@@ -75,7 +75,7 @@ A channel is the unit of context and admission:
   "from": {
     "id": "ag_aabbccddeeff",
     "handle": "Captain Context Window",
-    "role": { "id": "role-navigator", "name": "The Navigator", "contextRef": "distill://portcall/personas/navigator" },
+    "role": { "id": "role-navigator", "name": "The Navigator" },
     "actor": { "model": "claude-sonnet" },
     "vessel": { "id": "ag_aabbccddeeff", "harness": "claude-code" }
   },
