@@ -8,6 +8,7 @@
 //     inbound message must name a PortCall channel. There are no direct chats.
 
 import type { Registry } from '../registry.ts';
+import crypto from 'node:crypto';
 import type { AgentRecord, Envelope, ProtocolAdapter } from '../types.ts';
 
 export const A2A_PROTOCOL_VERSION = '0.3.0';
@@ -103,18 +104,21 @@ export async function handleGatewayRpc(
     if (!msg) return fail(-32602, 'params.message required');
     const dataPart = (msg.parts ?? []).find((p) => p.kind === 'data' && p.data);
     const textPart = (msg.parts ?? []).find((p) => p.kind === 'text');
-    const inner = dataPart?.data?.portcallEnvelope as Envelope | undefined;
-    const channelId = inner?.channelId ?? dataPart?.data?.channelId;
+    const supplied = dataPart?.data?.portcallEnvelope as Partial<Envelope> | undefined;
+    const channelId = supplied?.channelId ?? dataPart?.data?.channelId;
     if (typeof channelId !== 'string' || !channelId) {
       return fail(-32602, 'A PortCall channelId is required; direct messages are not supported');
     }
-    const envelope: Envelope = inner ?? {
-      id: msg.messageId ?? 'a2a_' + Math.random().toString(36).slice(2, 10),
+    // The bearer-authenticated URL agent is the caller. Never accept identity,
+    // timestamps, or ids supplied inside an A2A data part.
+    const envelope: Envelope = {
+      id: 'msg_' + crypto.randomBytes(6).toString('hex'),
       ts: Date.now(),
-      from: { id: 'external:a2a', handle: 'External A2A caller' },
+      from: { id: agent.id, handle: agent.handle, role: agent.role, actor: agent.actor, vessel: agent.vessel },
       channelId,
-      kind: 'chat',
-      body: dataPart?.data ?? { text: textPart?.text ?? '' },
+      kind: typeof supplied?.kind === 'string' ? supplied.kind : 'chat',
+      body: supplied?.body && typeof supplied.body === 'object'
+        ? supplied.body : dataPart?.data ?? { text: textPart?.text ?? '' },
     };
     await deliver(agent, envelope);
     return reply({

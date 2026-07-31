@@ -54,7 +54,10 @@ Write-IfChanged (Join-Path $skillDir 'SKILL.md') (Get-Content (Join-Path $here '
 $settingsFile = Join-Path $claudeDir 'settings.json'
 if (Test-Path $settingsFile) {
     $raw = Get-Content $settingsFile -Raw
-    try { $settings = $raw | ConvertFrom-Json -AsHashtable }
+    try {
+        $settings = if ([string]::IsNullOrWhiteSpace($raw)) { [ordered]@{} }
+                    else { $raw | ConvertFrom-Json -AsHashtable }
+    }
     catch { throw "$settingsFile is not valid JSON - fix it first; refusing to rewrite it." }
     $backup = "$settingsFile.portcall-backup"
     if (-not (Test-Path $backup)) { Copy-Item $settingsFile $backup }

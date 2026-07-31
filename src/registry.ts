@@ -13,8 +13,10 @@ const ONLINE_WINDOW_MS = 45_000;
 const REQUIRED_WHOAMI = ['harness', 'owner', 'purpose'] as const;
 
 interface HandshakeEntry {
+  channelId: string;
+  pair: [string, string];
   reports: Record<string, string>;
-  verified: boolean;
+  matched: boolean;
 }
 
 export class Registry {
@@ -30,7 +32,7 @@ export class Registry {
     this.bus = bus;
   }
 
-  register({ handle, whoami, extras, protocols }: RegistrationRequest) {
+  register({ handle, role, whoami, extras, protocols }: RegistrationRequest) {
     if (!whoami || typeof whoami !== 'object') {
       throw httpError(422, 'The Who-You-Are rule is mandatory: send a whoami object.');
     }
@@ -43,6 +45,8 @@ export class Registry {
     const checked = whoami as Whoami;
     const id = 'ag_' + crypto.randomBytes(6).toString('hex');
     const token = crypto.randomBytes(24).toString('hex');
+    const roleName = (role?.name && String(role.name).trim()) || (handle && String(handle).trim()) || id;
+    const roleId = (role?.id && String(role.id).trim()) || id;
     const agent: AgentRecord = {
       id,
       handle: (handle && String(handle).trim()) || null, // silly name: encouraged, not enforced
@@ -51,6 +55,19 @@ export class Registry {
         owner: checked.owner.trim(),
         purpose: checked.purpose.trim(),
         ...(typeof checked.model === 'string' ? { model: checked.model.trim() } : {}),
+      },
+      role: {
+        id: roleId,
+        name: roleName,
+        ...(typeof role?.charter === 'string' && role.charter.trim() ? { charter: role.charter.trim() } : {}),
+        ...(typeof role?.contextRef === 'string' && role.contextRef.trim() ? { contextRef: role.contextRef.trim() } : {}),
+      },
+      actor: {
+        ...(typeof checked.model === 'string' && checked.model.trim() ? { model: checked.model.trim() } : {}),
+      },
+      vessel: {
+        id,
+        harness: checked.harness.trim(),
       },
       extras: extras && typeof extras === 'object' ? extras : {},
       protocols: protocols && typeof protocols === 'object' ? protocols : {},
@@ -78,6 +95,13 @@ export class Registry {
 
   leave(id: string, token: string): void {
     const agent = this.auth(id, token);
+    const streams = this.streams.get(id);
+    if (streams) {
+      for (const response of streams) {
+        try { response.end(); } catch { /* already closed */ }
+      }
+      this.streams.delete(id);
+    }
     this.agents.delete(id);
     this.inboxes.delete(id);
     for (const channel of this.channels.values()) {
@@ -85,6 +109,9 @@ export class Registry {
       channel.moderators = channel.moderators.filter((member) => member !== id);
       if (!channel.members.length) this.channels.delete(channel.id);
       else if (!channel.moderators.length) channel.moderators.push(channel.members[0]);
+    }
+    for (const [key, handshake] of this.handshakes) {
+      if (handshake.pair.includes(id)) this.handshakes.delete(key);
     }
     this.bus.emit('agent:left', { id, handle: agent.handle });
   }
@@ -97,21 +124,24 @@ export class Registry {
     return Date.now() - agent.lastSeen < ONLINE_WINDOW_MS;
   }
 
-  publicView(agent: AgentRecord): PublicAgent {
+  publicView(agent: AgentRecord, viewerId?: string): PublicAgent {
     return {
       id: agent.id,
       handle: agent.handle,
       whoami: agent.whoami,
+      role: agent.role,
+      actor: agent.actor,
+      vessel: agent.vessel,
       extras: agent.extras,
       protocols: Object.keys(agent.protocols),
       online: this.isOnline(agent),
       registeredAt: agent.registeredAt,
-      verifiedWith: this.verifiedPeers(agent.id),
+      anchorMatchesWith: this.anchorMatches(agent.id, viewerId),
     };
   }
 
-  roster(): PublicAgent[] {
-    return [...this.agents.values()].map((a) => this.publicView(a));
+  roster(viewerId?: string): PublicAgent[] {
+    return [...this.agents.values()].map((a) => this.publicView(a, viewerId));
   }
 
   // --- topic-bounded channels: the only place conversations may happen ---
@@ -244,34 +274,39 @@ export class Registry {
   // --- handshake bookkeeping (the daemon never sees the anchor secret; it
   // only checks that both sides independently report the same transcript) ---
 
-  confirmHandshake(id: string, token: string, peerId: string, transcript: string) {
+  confirmHandshake(id: string, token: string, channelId: string, peerId: string, transcript: string) {
     this.auth(id, token);
     const peer = this.agents.get(peerId);
     if (!peer) throw httpError(404, `No such peer: ${peerId}`);
-    const key = [id, peerId].sort().join('~');
-    const entry = this.handshakes.get(key) ?? { reports: {}, verified: false };
+    const channel = this.assertChannelMember(id, channelId);
+    if (!channel.members.includes(peerId)) throw httpError(403, 'Flag Check peers must share the named channel.');
+    const pair = [id, peerId].sort() as [string, string];
+    const key = `${channelId}~${pair.join('~')}`;
+    const entry = this.handshakes.get(key) ?? { channelId, pair, reports: {}, matched: false };
     entry.reports[id] = transcript;
-    const [a, b] = key.split('~');
-    entry.verified =
+    const [a, b] = pair;
+    entry.matched =
       !!entry.reports[a] && !!entry.reports[b] && entry.reports[a] === entry.reports[b];
     this.handshakes.set(key, entry);
     this.bus.emit('handshake', {
+      channelId,
       pair: [a, b],
-      verified: entry.verified,
+      matched: entry.matched,
       reportedBy: id,
     });
-    return { verified: entry.verified };
+    return { matched: entry.matched };
   }
 
-  verifiedPeers(id: string): string[] {
-    const out: string[] = [];
-    for (const [key, entry] of this.handshakes) {
-      if (!entry.verified) continue;
-      const [a, b] = key.split('~');
-      if (a === id) out.push(b);
-      else if (b === id) out.push(a);
+  anchorMatches(id: string, viewerId?: string): string[] {
+    const out = new Set<string>();
+    for (const entry of this.handshakes.values()) {
+      if (!entry.matched) continue;
+      if (!this.canObserveChannel(entry.channelId, viewerId)) continue;
+      const [a, b] = entry.pair;
+      if (a === id) out.add(b);
+      else if (b === id) out.add(a);
     }
-    return out;
+    return [...out];
   }
 }
 

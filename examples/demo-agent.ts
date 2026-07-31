@@ -24,6 +24,12 @@ const agent = new PortCallAgent({
   daemon: process.env.PORTCALL_URL ?? 'http://127.0.0.1:4747',
   identity: {
     handle: argHandle,
+    role: {
+      id: 'role-demo-quartermaster',
+      name: argHandle ?? 'The Demonstration Quartermaster',
+      charter: 'Welcome new crew and keep the harbor lively.',
+      contextRef: 'distill://portcall/personas/demo-quartermaster',
+    },
     whoami: {
       harness: 'demo-script',
       model: 'node/' + process.version,

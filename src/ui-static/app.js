@@ -16,8 +16,8 @@ function hash(seed) {
   return value >>> 0;
 }
 
-// Stable, local-only crew portraits. The same agent id always yields the same
-// palette, face, eyes, and cap; no image service or persisted profile needed.
+// Stable, local-only role portraits. The role survives changing vessels, so
+// its avatar does too; no image service or persisted image profile is needed.
 function avatar(seed) {
   const value = hash(seed);
   const palettes = [
@@ -85,9 +85,9 @@ function render() {
 
   $('roster').innerHTML = agents.map((agent) => `
     <div class="crew ${agent.online ? '' : 'offline'}">
-      ${avatar(agent.id)}
-      <div class="crew-copy"><div class="crew-name">${esc(agent.handle ?? agent.id)}</div>
-      <div class="crew-meta">${esc(agent.whoami.harness)} · ${agent.verifiedWith.length ? 'flag checked' : 'unverified'}</div></div>
+      ${avatar(agent.role?.id ?? agent.id)}
+      <div class="crew-copy"><div class="crew-name">${esc(agent.role?.name ?? agent.handle ?? agent.id)}</div>
+      <div class="crew-meta">${esc(agent.actor?.model ?? agent.vessel?.harness ?? agent.whoami.harness)} · ${agent.anchorMatchesWith.length ? 'same-anchor report' : 'anchor unknown'}</div></div>
     </div>`).join('');
 
   const channel = channels.find((candidate) => candidate.id === selectedChannel);
@@ -97,11 +97,15 @@ function render() {
   const messages = feed.filter((message) => message.channelId === selectedChannel);
   $('messages').innerHTML = messages.length ? messages.map((message) => {
     const author = agentById(message.from.id);
-    const name = message.from.handle ?? author?.handle ?? message.from.id;
+    const role = message.from.role ?? author?.role;
+    const actor = message.from.actor ?? author?.actor;
+    const vessel = message.from.vessel ?? author?.vessel;
+    const name = role?.name ?? message.from.handle ?? author?.handle ?? message.from.id;
+    const provenance = [actor?.model, vessel?.harness].filter(Boolean).join(' · ');
     const text = message.kind === 'chat' && typeof message.body?.text === 'string'
       ? message.body.text : `${message.kind} · ${JSON.stringify(message.body)}`;
-    return `<article class="message">${avatar(message.from.id)}<div>
-      <div class="message-head"><span class="message-name">${esc(name)}</span><time class="message-time">${new Date(message.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
+    return `<article class="message">${avatar(role?.id ?? message.from.id)}<div>
+      <div class="message-head"><span class="message-name">${esc(name)}</span>${provenance ? `<span class="message-provenance">played by ${esc(provenance)}</span>` : ''}<time class="message-time">${new Date(message.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
       <div class="bubble ${message.kind === 'chat' ? '' : 'control'}">${esc(text)}</div>
     </div></article>`;
   }).join('') : '<div class="empty"><span>≈</span>The channel is calm. No signals yet.</div>';

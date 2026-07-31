@@ -28,7 +28,8 @@ server.listen(port, host, async () => {
      http://${host}:${port}       (UI + API)
      http://${host}:${port}/a2a/<agent-id>   (A2A gateway)
      identity provider: ${state.identity ?? 'none (handshakes disabled by choice)'}
-     the one hard rule: no anonymous sails. whoami or walk the plank.
+     persistent roles, changing vessels — with provenance always aboard.
+     no anonymous sails: whoami or walk the plank.
 `);
   if (state.identity) {
     try {

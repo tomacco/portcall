@@ -53,21 +53,26 @@ export function createServer({ identity = null as string | null }) {
     const envelope: Envelope = {
       id: 'msg_' + crypto.randomBytes(6).toString('hex'),
       ts: Date.now(),
-      from: { id: fromAgent.id, handle: fromAgent.handle },
+      from: { id: fromAgent.id, handle: fromAgent.handle, role: fromAgent.role, actor: fromAgent.actor, vessel: fromAgent.vessel },
       channelId,
       kind: typeof kind === 'string' && kind ? kind : 'chat',
       body: body ?? {},
       ...(sig ? { sig } : {}),
     };
-    const deliveries = [];
-    for (const memberId of channel.members) {
-      if (memberId === fromAgent.id) continue;
-      const recipient = registry.get(memberId);
-      if (!recipient) continue;
-      const adapter = resolveAdapter(recipient);
-      deliveries.push({ memberId, ...(await adapter.deliver(recipient, envelope)) });
-    }
+    // Accept and record the channel event exactly once. Individual transports
+    // may fail independently; one broken A2A endpoint must not erase history or
+    // make healthy recipients look undelivered.
     registry.recordEnvelope({ ...envelope, via: 'channel' });
+    const recipients = channel.members.filter((memberId) => memberId !== fromAgent.id);
+    const attempts = await Promise.allSettled(recipients.map(async (memberId) => {
+      const recipient = registry.get(memberId);
+      if (!recipient) throw new Error('agent left before delivery');
+      const adapter = resolveAdapter(recipient);
+      return { memberId, ...(await adapter.deliver(recipient, envelope)) };
+    }));
+    const deliveries = attempts.map((attempt, index) => attempt.status === 'fulfilled'
+      ? { ok: true, ...attempt.value }
+      : { ok: false, memberId: recipients[index], error: attempt.reason?.message ?? String(attempt.reason) });
     return { envelope, deliveries };
   }
 
@@ -123,7 +128,8 @@ export function createServer({ identity = null as string | null }) {
         }
         if (req.method === 'POST') {
           const body = await readBody();
-          const rpcRes = await handleGatewayRpc(agent, body, async (recipient, envelope) => {
+          const caller = registry.auth(agent.id, bearer());
+          const rpcRes = await handleGatewayRpc(caller, body, async (recipient, envelope) => {
             const channel = registry.assertChannelMember(recipient.id, envelope.channelId);
             for (const memberId of channel.members) registry.pushInbox(memberId, envelope);
             registry.recordEnvelope({ ...envelope, via: 'a2a-gateway' });
@@ -167,7 +173,9 @@ export function createServer({ identity = null as string | null }) {
         }
 
         if (req.method === 'GET' && route[0] === 'agents' && route.length === 1) {
-          return json(200, { agents: registry.roster() });
+          const viewerId = url.searchParams.get('agent') ?? undefined;
+          if (viewerId) registry.auth(viewerId, bearer());
+          return json(200, { agents: registry.roster(viewerId) });
         }
 
         if (req.method === 'POST' && route[0] === 'channels' && route.length === 1) {
@@ -234,7 +242,9 @@ export function createServer({ identity = null as string | null }) {
           if (req.method === 'GET' && route.length === 2) {
             const agent = registry.get(id);
             if (!agent) return json(404, { error: `No such agent: ${id}` });
-            return json(200, registry.publicView(agent));
+            const viewerId = url.searchParams.get('agent') ?? undefined;
+            if (viewerId) registry.auth(viewerId, bearer());
+            return json(200, registry.publicView(agent, viewerId));
           }
         }
 
@@ -253,13 +263,16 @@ export function createServer({ identity = null as string | null }) {
         if (req.method === 'POST' && route[0] === 'handshakes' && route[1] === 'confirm') {
           const body = await readBody();
           const agent = registry.auth(body.from, bearer());
-          return json(200, registry.confirmHandshake(agent.id, agent.token, body.peerId, body.transcript));
+          return json(200, registry.confirmHandshake(
+            agent.id, agent.token, body.channelId, body.peerId, body.transcript,
+          ));
         }
 
         if (req.method === 'GET' && route[0] === 'events') {
           return bus.attach(res, 20, (type, data) => {
             if (type === 'message') return registry.canObserveChannel(data.channelId);
             if (type === 'channel:created' || type === 'channel:updated') return data.visibility === 'public';
+            if (type === 'handshake') return registry.canObserveChannel(data.channelId);
             return true;
           });
         }

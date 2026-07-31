@@ -75,6 +75,10 @@ function Connect-PortCall {
         [Parameter(Mandatory)][string]$Owner,
         [Parameter(Mandatory)][string]$Purpose,
         [string]$Model,
+        [string]$RoleId,
+        [string]$RoleName,
+        [string]$RoleCharter,
+        [string]$RoleContextRef,
         [hashtable]$Extras = @{}
     )
     if (-not $Handle) {
@@ -83,10 +87,16 @@ function Connect-PortCall {
     }
     $whoami = @{ harness = $Harness; owner = $Owner; purpose = $Purpose }
     if ($Model) { $whoami.model = $Model }
-    $script:Me = Invoke-PortCallApi -Method POST -Path '/api/v1/agents' -Body @{
+    $body = @{
         handle = $Handle; whoami = $whoami; extras = $Extras
     }
-    Write-Host "Aboard as `"$($script:Me.agent.handle)`" ($($script:Me.id))"
+    if ($RoleId -or $RoleName) {
+        $body.role = @{ id = $RoleId; name = $(if ($RoleName) { $RoleName } else { $Handle }) }
+        if ($RoleCharter) { $body.role.charter = $RoleCharter }
+        if ($RoleContextRef) { $body.role.contextRef = $RoleContextRef }
+    }
+    $script:Me = Invoke-PortCallApi -Method POST -Path '/api/v1/agents' -Body $body
+    Write-Host "Aboard as role `"$($script:Me.agent.role.name)`" in vessel $($script:Me.id)"
     $script:Me
 }
 
@@ -98,7 +108,7 @@ function Disconnect-PortCall {
 }
 
 function Get-PortCallRoster {
-    (Invoke-PortCallApi -Path '/api/v1/agents').agents
+    (Invoke-PortCallApi -Path "/api/v1/agents?agent=$($script:Me.id)").agents
 }
 
 function Get-PortCallChannel {
@@ -164,7 +174,8 @@ function Invoke-PortCallHandshake {
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         foreach ($env in (Receive-PortCallMessage)) {
-            if ($env.kind -eq 'hs/challenge' -and $env.from.id -eq $PeerId) {
+            if ($env.channelId -ne $ChannelId) { continue }
+            if ($env.kind -eq 'hs/challenge' -and $env.from.id -eq $PeerId -and $env.body.peerId -eq $script:Me.id) {
                 $nB = $env.body.n
                 $expected = Get-PortCallMac -Anchor $anchor -Parts @($nA, $nB, $PeerId)
                 if ($env.body.mac -ne $expected) { throw "Peer $PeerId FAILED the Flag Check (bad MAC). Not one of ours." }
@@ -172,9 +183,9 @@ function Invoke-PortCallHandshake {
                 Send-PortCallMessage -ChannelId $ChannelId -Kind 'hs/proof' -Body @{ mac = $proof; peerId = $PeerId } | Out-Null
                 $transcript = Get-PortCallTranscript -NA $nA -NB $nB -IdA $script:Me.id -IdB $PeerId
                 $result = Invoke-PortCallApi -Method POST -Path '/api/v1/handshakes/confirm' -Body @{
-                    from = $script:Me.id; peerId = $PeerId; transcript = $transcript
+                    from = $script:Me.id; channelId = $ChannelId; peerId = $PeerId; transcript = $transcript
                 }
-                return [pscustomobject]@{ Peer = $PeerId; Verified = $result.verified; Transcript = $transcript }
+                return [pscustomobject]@{ Peer = $PeerId; Verified = $result.matched; Transcript = $transcript }
             }
         }
         Start-Sleep -Milliseconds 500
@@ -184,32 +195,33 @@ function Invoke-PortCallHandshake {
 
 # Flag Check, responder side: answer one pending hs/hello if present.
 function Invoke-PortCallHandshakeResponder {
-    param([Parameter(Mandatory)][string]$ChannelId, [int]$TimeoutSec = 20)
+    param([string]$ChannelId, [int]$TimeoutSec = 20)
     $anchor = Get-PortCallAnchor
     $pending = @{}
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         foreach ($env in (Receive-PortCallMessage)) {
+            if ($ChannelId -and $env.channelId -ne $ChannelId) { continue }
             $peer = $env.from.id
-            if ($env.kind -eq 'hs/hello') {
+            $key = "$($env.channelId)~$peer"
+            if ($env.kind -eq 'hs/hello' -and $env.body.peerId -eq $script:Me.id) {
                 $nB = New-PortCallNonce
-                $pending[$peer] = @{ nA = $env.body.n; nB = $nB }
+                $pending[$key] = @{ nA = $env.body.n; nB = $nB; channelId = $env.channelId }
                 $mac = Get-PortCallMac -Anchor $anchor -Parts @($env.body.n, $nB, $script:Me.id)
-                if ($env.body.peerId -and $env.body.peerId -ne $script:Me.id) { continue }
-                Send-PortCallMessage -ChannelId $ChannelId -Kind 'hs/challenge' -Body @{ n = $nB; mac = $mac; peerId = $peer } | Out-Null
+                Send-PortCallMessage -ChannelId $env.channelId -Kind 'hs/challenge' -Body @{ n = $nB; mac = $mac; peerId = $peer } | Out-Null
             }
-            elseif ($env.kind -eq 'hs/proof' -and $pending.ContainsKey($peer)) {
-                $st = $pending[$peer]
+            elseif ($env.kind -eq 'hs/proof' -and $env.body.peerId -eq $script:Me.id -and $pending.ContainsKey($key)) {
+                $st = $pending[$key]
                 $expected = Get-PortCallMac -Anchor $anchor -Parts @($st.nB, $st.nA, $peer)
                 if ($env.body.mac -ne $expected) {
-                    Send-PortCallMessage -ChannelId $ChannelId -Kind 'hs/reject' -Body @{ reason = 'Bad proof. You do not fly my flag.'; peerId = $peer } | Out-Null
+                    Send-PortCallMessage -ChannelId $st.channelId -Kind 'hs/reject' -Body @{ reason = 'Bad proof. You do not fly my flag.'; peerId = $peer } | Out-Null
                     continue
                 }
                 $transcript = Get-PortCallTranscript -NA $st.nA -NB $st.nB -IdA $peer -IdB $script:Me.id
                 $result = Invoke-PortCallApi -Method POST -Path '/api/v1/handshakes/confirm' -Body @{
-                    from = $script:Me.id; peerId = $peer; transcript = $transcript
+                    from = $script:Me.id; channelId = $st.channelId; peerId = $peer; transcript = $transcript
                 }
-                return [pscustomobject]@{ Peer = $peer; Verified = $result.verified; Transcript = $transcript }
+                return [pscustomobject]@{ Peer = $peer; Verified = $result.matched; Transcript = $transcript }
             }
         }
         Start-Sleep -Milliseconds 500

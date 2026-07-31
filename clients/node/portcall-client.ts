@@ -5,10 +5,11 @@
 import {
   mac, safeEqual, nonce, sessionKey, transcriptHash,
 } from '../../src/handshake.ts';
-import type { ChannelRecord, ChannelVisibility, Envelope, PublicAgent, Whoami } from '../../src/types.ts';
+import type { ChannelRecord, ChannelVisibility, Envelope, PublicAgent, RoleIdentity, Whoami } from '../../src/types.ts';
 
 export interface AgentIdentity {
   handle?: string;
+  role?: RoleIdentity;
   whoami: Whoami;
   extras?: Record<string, unknown>;
   protocols?: Record<string, { endpoint?: string }>;
@@ -24,6 +25,7 @@ type EnvelopeHandler = (env: Envelope) => void | Promise<void>;
 
 interface InitiatorState {
   role: 'initiator';
+  channelId: string;
   nA: string;
   secret: string;
   resolve: (r: HandshakeResult) => void;
@@ -32,6 +34,7 @@ interface InitiatorState {
 }
 interface ResponderState {
   role: 'responder';
+  channelId: string;
   nA: string;
   nB: string;
   secret: string;
@@ -50,6 +53,10 @@ export class PortCallAgent {
   private abort: AbortController | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private anchor: string | null = null;
+
+  private pendingKey(channelId: string, peerId: string): string {
+    return `${channelId}~${peerId}`;
+  }
 
   constructor(opts: {
     daemon?: string;
@@ -100,7 +107,7 @@ export class PortCallAgent {
   }
 
   async roster(): Promise<PublicAgent[]> {
-    return (await this.api<{ agents: PublicAgent[] }>('/api/v1/agents')).agents;
+    return (await this.api<{ agents: PublicAgent[] }>(`/api/v1/agents?agent=${this.id}`)).agents;
   }
 
   on(kind: string, fn: EnvelopeHandler): this {
@@ -148,12 +155,13 @@ export class PortCallAgent {
   async handshake(channelId: string, peerId: string, { timeoutMs = 15_000 } = {}): Promise<HandshakeResult> {
     const secret = await this.secret();
     const nA = nonce();
+    const key = this.pendingKey(channelId, peerId);
     const done = new Promise<HandshakeResult>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(peerId);
+        this.pending.delete(key);
         reject(new Error(`Handshake with ${peerId} timed out`));
       }, timeoutMs);
-      this.pending.set(peerId, { role: 'initiator', nA, secret, resolve, reject, timer });
+      this.pending.set(key, { role: 'initiator', channelId, nA, secret, resolve, reject, timer });
     });
     await this.send(channelId, 'hs/hello', { n: nA, peerId });
     return done;
@@ -167,59 +175,61 @@ export class PortCallAgent {
     return this.anchor;
   }
 
-  private async confirm(peerId: string, transcript: string): Promise<boolean> {
-    const { verified } = await this.api<{ verified: boolean }>('/api/v1/handshakes/confirm', {
+  private async confirm(channelId: string, peerId: string, transcript: string): Promise<boolean> {
+    const { matched } = await this.api<{ matched: boolean }>('/api/v1/handshakes/confirm', {
       method: 'POST',
-      body: JSON.stringify({ from: this.id, peerId, transcript }),
+      body: JSON.stringify({ from: this.id, channelId, peerId, transcript }),
     });
-    return verified;
+    return matched;
   }
 
   private async handleEnvelope(env: Envelope): Promise<void> {
     const peer = env.from.id;
+    const key = this.pendingKey(env.channelId, peer);
     try {
       if (env.kind === 'hs/hello') {
+        if (env.body.peerId !== this.id) return;
         const secret = await this.secret();
         const nB = nonce();
         const nA = String(env.body.n);
-        this.pending.set(peer, { role: 'responder', nA, nB, secret });
-        if (env.body.peerId && env.body.peerId !== this.id) return;
+        this.pending.set(key, { role: 'responder', channelId: env.channelId, nA, nB, secret });
         await this.send(env.channelId, 'hs/challenge', { n: nB, mac: mac(secret, nA, nB, this.id!), peerId: peer });
         return;
       }
       if (env.kind === 'hs/challenge') {
-        const st = this.pending.get(peer);
+        if (env.body.peerId !== this.id) return;
+        const st = this.pending.get(key);
         if (!st || st.role !== 'initiator') return;
         const nB = String(env.body.n);
         const theirMac = String(env.body.mac);
         if (!safeEqual(theirMac, mac(st.secret, st.nA, nB, peer))) {
           clearTimeout(st.timer);
-          this.pending.delete(peer);
+          this.pending.delete(key);
           st.reject(new Error(`Peer ${peer} FAILED the Flag Check (bad MAC). Not one of ours.`));
           return;
         }
-        if (env.body.peerId && env.body.peerId !== this.id) return;
         await this.send(env.channelId, 'hs/proof', { mac: mac(st.secret, nB, st.nA, this.id!), peerId: peer });
         const transcript = transcriptHash(st.nA, nB, this.id!, peer);
         this.sessions.set(peer, sessionKey(st.secret, st.nA, nB));
-        const verified = await this.confirm(peer, transcript);
+        const verified = await this.confirm(env.channelId, peer, transcript);
         clearTimeout(st.timer);
-        this.pending.delete(peer);
+        this.pending.delete(key);
         st.resolve({ peer, verified, transcript });
         return;
       }
       if (env.kind === 'hs/proof') {
-        const st = this.pending.get(peer);
+        if (env.body.peerId !== this.id) return;
+        const st = this.pending.get(key);
         if (!st || st.role !== 'responder') return;
         if (!safeEqual(String(env.body.mac), mac(st.secret, st.nB, st.nA, peer))) {
-          this.pending.delete(peer);
+          this.pending.delete(key);
           await this.send(env.channelId, 'hs/reject', { reason: 'Bad proof. You do not fly my flag.', peerId: peer });
           return;
         }
         const transcript = transcriptHash(st.nA, st.nB, peer, this.id!);
         this.sessions.set(peer, sessionKey(st.secret, st.nA, st.nB));
-        this.pending.delete(peer);
-        await this.confirm(peer, transcript);
+        this.pending.delete(key);
+        await this.confirm(env.channelId, peer, transcript);
         return;
       }
     } catch (err: any) {

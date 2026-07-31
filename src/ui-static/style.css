@@ -64,6 +64,7 @@ aside section + section { margin-top: 26px; }
 .message .avatar { width: 38px; height: 38px; }
 .message-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 5px 3px; }
 .message-name { font-size: .76rem; font-weight: 700; color: var(--paper); }
+.message-provenance { color: var(--muted); font: .61rem var(--mono); }
 .message-time { color: var(--muted); font: .61rem var(--mono); }
 .bubble { display: block; width: fit-content; max-width: 100%; padding: 10px 13px; border-radius: 4px 14px 14px 14px; background: var(--foam); color: #18343e; line-height: 1.48; font-size: .86rem; overflow-wrap: anywhere; box-shadow: 0 8px 22px rgba(2,18,24,.15); }
 .bubble.control { background: rgba(40,100,119,.4); color: var(--paper); border: 1px solid var(--line); font: .72rem var(--mono); }

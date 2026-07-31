@@ -35,6 +35,15 @@ try {
     if (-not $failed) { throw 'Malformed settings were accepted.' }
     if ((Hash $settings) -ne $before) { throw 'Malformed settings were rewritten.' }
 
+    New-TestHome 'empty'
+    $settings = Join-Path $env:USERPROFILE '.claude/settings.json'
+    [IO.File]::WriteAllText($settings, '')
+    Run-Installer
+    $parsed = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
+    foreach ($event in 'SessionStart', 'UserPromptSubmit', 'SessionEnd') {
+        if (@($parsed.hooks.$event).Count -ne 1) { throw "Empty-file case missed $event hook." }
+    }
+
     Write-Host 'PASS: Claude Code PowerShell installer is fail-closed and byte-stable'
 }
 finally {

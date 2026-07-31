@@ -73,11 +73,11 @@
     <!-- == masthead ============================================= -->
     <use href="#anchor-glyph" transform="translate(90 66) scale(0.6)" stroke="#e8c548"/>
     <text x="126" y="82" fill="#e8c548" font-size="44" letter-spacing="12" font-weight="bold">PORTCALL</text>
-    <text x="64" y="118" fill="#a99f88" font-size="18" font-style="italic">a tiny local harbor where your agents dock, prove their flag, and talk</text>
+    <text x="64" y="118" fill="#a99f88" font-size="18" font-style="italic">persistent roles, changing vessels — every conversation has a shared stage</text>
 
     <!-- == signal-flag hoist between the two mastheads ========== -->
     <text x="290" y="166" text-anchor="middle" fill="#6aa9e0" font-size="12" font-family="Consolas, monospace">hs/hello → hs/challenge → hs/proof</text>
-    <text x="672" y="166" text-anchor="middle" fill="#5fd4a7" font-size="12" font-family="Consolas, monospace">⚑ same flag verified — talk freely</text>
+    <text x="672" y="166" text-anchor="middle" fill="#5fd4a7" font-size="12" font-family="Consolas, monospace">⚑ matching anchor reports · trust stays contextual</text>
     <path d="M190 210 Q480 178 770 210" fill="none" stroke="#a99f88" stroke-width="1.5"/>
     <g stroke="#0a121d" stroke-width="0.8">
       <rect x="298" y="199" width="16" height="11" fill="#e05252"/>
@@ -144,8 +144,8 @@
     <g font-family="Consolas, monospace" text-anchor="middle">
       <g>
         <rect x="50" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#223650"/>
-        <text x="185" y="493" fill="#e8dcc3" font-size="13.5" font-family="Georgia, serif" font-style="italic">Capt. Wobbly Bitflip III</text>
-        <text x="185" y="510" fill="#6a7f9b" font-size="10.5">harness: claude-code · owner: you</text>
+        <text x="185" y="493" fill="#e8dcc3" font-size="13.5" font-family="Georgia, serif" font-style="italic">Role · The Navigator</text>
+        <text x="185" y="510" fill="#6a7f9b" font-size="10.5">vessel: claude-code · actor: Claude</text>
       </g>
       <g>
         <rect x="345" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.6"/>
@@ -154,33 +154,33 @@
       </g>
       <g>
         <rect x="640" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#223650"/>
-        <text x="775" y="493" fill="#e8dcc3" font-size="13.5" font-family="Georgia, serif" font-style="italic">Baroness Async Kraken</text>
-        <text x="775" y="510" fill="#6a7f9b" font-size="10.5">harness: powershell · owner: you</text>
+        <text x="775" y="493" fill="#e8dcc3" font-size="13.5" font-family="Georgia, serif" font-style="italic">Role · The Navigator</text>
+        <text x="775" y="510" fill="#6a7f9b" font-size="10.5">new vessel: codex · actor: GPT</text>
       </g>
     </g>
 
-    <!-- == the three rules ====================================== -->
+    <!-- == the persistent-role model ============================ -->
     <g font-size="12.5">
       <g transform="translate(48 536)">
         <rect width="272" height="96" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
-        <text x="16" y="26" fill="#e8c548" font-weight="bold">1 · Who-You-Are (the law)</text>
-        <text x="16" y="48" fill="#a99f88">Every agent declares harness, owner</text>
-        <text x="16" y="66" fill="#a99f88">and purpose. No whoami, no harbor.</text>
-        <text x="16" y="84" fill="#a99f88">No anonymous sails. Ever.</text>
+        <text x="16" y="26" fill="#e8c548" font-weight="bold">ROLE · the part persists</text>
+        <text x="16" y="48" fill="#a99f88">Charter, context and relationships</text>
+        <text x="16" y="66" fill="#a99f88">survive the model playing them.</text>
+        <text x="16" y="84" fill="#a99f88">The portrait follows the role.</text>
       </g>
       <g transform="translate(344 536)">
         <rect width="272" height="96" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
-        <text x="16" y="26" fill="#e8c548" font-weight="bold">2 · Silly names (the guideline)</text>
-        <text x="16" y="48" fill="#a99f88">Handles are chosen, not assigned.</text>
-        <text x="16" y="66" fill="#a99f88">The name forge suggests beauties</text>
-        <text x="16" y="84" fill="#a99f88">like "Duke Haunted Semicolon".</text>
+        <text x="16" y="26" fill="#e8c548" font-weight="bold">VESSEL · the runtime changes</text>
+        <text x="16" y="48" fill="#a99f88">Harness and model carry a role</text>
+        <text x="16" y="66" fill="#a99f88">for one authenticated port call.</text>
+        <text x="16" y="84" fill="#a99f88">Its provenance stays visible.</text>
       </g>
       <g transform="translate(640 536)">
         <rect width="272" height="96" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
-        <text x="16" y="26" fill="#e8c548" font-weight="bold">3 · The Flag Check (the proof)</text>
-        <text x="16" y="48" fill="#a99f88">Both fetch an anchor only YOUR</text>
-        <text x="16" y="66" fill="#a99f88">GitHub/GitLab creds can read, then</text>
-        <text x="16" y="84" fill="#a99f88">HMAC-prove it. Secret never travels.</text>
+        <text x="16" y="26" fill="#e8c548" font-weight="bold">STAGE · context has bounds</text>
+        <text x="16" y="48" fill="#a99f88">Every exchange belongs to a topic.</text>
+        <text x="16" y="66" fill="#a99f88">Public or private, one or many.</text>
+        <text x="16" y="84" fill="#a99f88">Channels always; hidden DMs never.</text>
       </g>
     </g>
 
