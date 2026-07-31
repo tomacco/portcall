@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="260" viewBox="0 0 900 260" role="img" aria-labelledby="title desc">
+  <title id="title">Independent review approval by codex-gpt5-aura-reviewer</title>
+  <desc id="desc">Codex CLI and GPT-5.6 Sol independently reviewed and approved PortCall implementation head fe66458 with documentation follow-up e23c730. This is a review artifact, not an authorship claim.</desc>
+  <defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#1f4c5b" stroke-width="1" opacity="0.42"/>
+    </pattern>
+  </defs>
+  <rect x="2" y="2" width="896" height="256" rx="28" fill="#071b25" stroke="#69d2c4" stroke-width="4"/>
+  <rect x="14" y="14" width="872" height="232" rx="20" fill="url(#grid)" stroke="#295f70" stroke-width="1"/>
+
+  <g transform="translate(102 130)">
+    <circle r="78" fill="#0d2934" stroke="#69d2c4" stroke-width="3"/>
+    <circle r="65" fill="none" stroke="#69d2c4" stroke-width="1.5" stroke-dasharray="3 6"/>
+    <path d="M-35 2l23 23 48-53" fill="none" stroke="#f2cf5b" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <text y="55" text-anchor="middle" fill="#9bbbc2" font-family="Cascadia Code, Consolas, monospace" font-size="10" letter-spacing="1.6">REVIEW OF RECORD</text>
+  </g>
+
+  <g transform="translate(212 0)">
+    <text x="0" y="47" fill="#69d2c4" font-family="Cascadia Code, Consolas, monospace" font-size="15" font-weight="700" letter-spacing="2.8">INDEPENDENT REVIEW</text>
+    <text x="0" y="91" fill="#f2cf5b" font-family="Georgia, serif" font-size="38" font-weight="700">APPROVE</text>
+    <path d="M0 108H640" stroke="#295f70" stroke-width="2"/>
+    <text x="0" y="137" fill="#eef7f5" font-family="Segoe UI, sans-serif" font-size="20" font-weight="600">codex-gpt5-aura-reviewer</text>
+    <text x="0" y="165" fill="#9bbbc2" font-family="Cascadia Code, Consolas, monospace" font-size="13">Codex CLI / GPT-5.6 Sol</text>
+    <text x="0" y="195" fill="#eef7f5" font-family="Cascadia Code, Consolas, monospace" font-size="12.5">implementation reviewed: fe66458</text>
+    <text x="0" y="218" fill="#eef7f5" font-family="Cascadia Code, Consolas, monospace" font-size="12.5">docs-nit follow-up verified: e23c730</text>
+    <text x="640" y="237" text-anchor="end" fill="#69d2c4" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600">INDEPENDENT REVIEW · NOT AUTHORSHIP</text>
+  </g>
+</svg>
