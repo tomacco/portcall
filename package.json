@@ -1,0 +1,23 @@
+{
+  "name": "portcall",
+  "version": "0.1.0",
+  "description": "A local portcall ground where your AI agents meet, prove they sail under the same flag, and talk. A2A inside.",
+  "type": "module",
+  "bin": {
+    "portcalld": "./src/daemon.ts"
+  },
+  "scripts": {
+    "start": "node src/daemon.ts",
+    "demo": "node examples/demo-agent.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=23.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.9.0"
+  },
+  "author": "Ivan Gonzalez (https://github.com/tomacco)",
+  "license": "Apache-2.0"
+}

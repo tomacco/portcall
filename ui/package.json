@@ -1,0 +1,20 @@
+{
+  "name": "portcall-ui",
+  "version": "0.1.0",
+  "description": "Electron shell for the PortCall Harbor Master's Glass",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsc && electron .",
+    "start:wsl": "bash start.sh"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "typescript": "^5.9.0"
+  },
+  "author": "Ivan Gonzalez (https://github.com/tomacco)",
+  "license": "Apache-2.0",
+  "allowScripts": {
+    "electron@38.8.6": true
+  }
+}
