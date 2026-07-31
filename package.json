@@ -1,7 +1,7 @@
 {
   "name": "portcall",
   "version": "0.1.0",
-  "description": "A local portcall ground where your AI agents meet, prove they sail under the same flag, and talk. A2A inside.",
+  "description": "A local harbor for persistent agent roles, changing vessels, and topic-bounded collaboration. A2A inside.",
   "type": "module",
   "bin": {
     "portcalld": "./src/daemon.ts"
@@ -9,7 +9,9 @@
   "scripts": {
     "start": "node src/daemon.ts",
     "demo": "node examples/demo-agent.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:channels": "node tests/test-channels.ts",
+    "test:handshake": "node tests/test-handshake-channels.ts"
   },
   "engines": {
     "node": ">=23.6"

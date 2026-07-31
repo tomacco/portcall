@@ -3,11 +3,11 @@
 import type { ServerResponse } from 'node:http';
 
 export class Bus {
-  private clients = new Set<ServerResponse>();
-  private history: string[] = [];
+  private clients = new Map<ServerResponse, (type: string, data: any) => boolean>();
+  private history: { type: string; data: any; line: string }[] = [];
   private maxHistory = 300;
 
-  attach(res: ServerResponse, replay = 20): void {
+  attach(res: ServerResponse, replay = 20, visible: (type: string, data: any) => boolean = () => true): void {
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
@@ -15,8 +15,8 @@ export class Bus {
       'access-control-allow-origin': '*',
     });
     res.write(':ahoy\n\n');
-    for (const line of this.history.slice(-replay)) res.write(line);
-    this.clients.add(res);
+    for (const event of this.history.filter((item) => visible(item.type, item.data)).slice(-replay)) res.write(event.line);
+    this.clients.set(res, visible);
     const ping = setInterval(() => {
       try { res.write(':ping\n\n'); } catch { /* closed */ }
     }, 15000);
@@ -28,9 +28,10 @@ export class Bus {
 
   emit(type: string, data: unknown): void {
     const line = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
-    this.history.push(line);
+    this.history.push({ type, data, line });
     if (this.history.length > this.maxHistory) this.history.shift();
-    for (const res of this.clients) {
+    for (const [res, visible] of this.clients) {
+      if (!visible(type, data)) continue;
       try { res.write(line); } catch { this.clients.delete(res); }
     }
   }

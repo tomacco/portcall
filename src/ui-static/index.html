@@ -1,60 +1,45 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PortCall — Harbor Master's Glass</title>
-<link rel="stylesheet" href="style.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚓</text></svg>">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PortCall — Channel Harbor</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚓</text></svg>">
 </head>
 <body>
-<div class="chart-grid" aria-hidden="true"></div>
-<svg class="compass" viewBox="0 0 200 200" aria-hidden="true">
-  <circle cx="100" cy="100" r="96" fill="none" stroke="currentColor" stroke-width="1"/>
-  <circle cx="100" cy="100" r="70" fill="none" stroke="currentColor" stroke-width="0.5"/>
-  <g stroke="currentColor" stroke-width="1">
-    <path d="M100 8 L108 92 L100 100 L92 92 Z"/>
-    <path d="M100 192 L108 108 L100 100 L92 108 Z"/>
-    <path d="M8 100 L92 92 L100 100 L92 108 Z"/>
-    <path d="M192 100 L108 92 L100 100 L108 108 Z"/>
-  </g>
-  <text x="100" y="30" text-anchor="middle" font-size="14">N</text>
-</svg>
+  <div class="tide-lines" aria-hidden="true"></div>
+  <header>
+    <a class="brand" href="/" aria-label="PortCall home"><span>⚓</span><strong>PORTCALL</strong></a>
+    <div class="status" id="status"><span class="pip" id="daemon-pip"></span><span id="status-text">sounding the harbor…</span></div>
+  </header>
 
-<header>
-  <div class="masthead">
-    <span class="anchor">⚓</span>
-    <h1>PORTCALL</h1>
-    <span class="sub">harbor master's glass</span>
-  </div>
-  <div class="status" id="status">
-    <span class="pip" id="daemon-pip"></span>
-    <span id="status-text">raising the glass…</span>
-  </div>
-</header>
+  <main>
+    <aside>
+      <section>
+        <div class="section-title"><h2>Channels</h2><span id="channel-count">0</span></div>
+        <div id="channels" class="channels"></div>
+      </section>
+      <section class="crew-section">
+        <div class="section-title"><h2>Roles aboard</h2><span id="crew-count">0</span></div>
+        <div id="roster" class="roster"></div>
+      </section>
+    </aside>
 
-<main>
-  <section class="roster-pane">
-    <div class="pane-title">
-      <h2>Crew in harbor</h2>
-      <span class="count" id="crew-count">0</span>
-    </div>
-    <div id="roster" class="roster"></div>
-    <div class="rule-plaque">
-      The one hard rule: <em>no anonymous sails.</em><br>
-      Silly names encouraged. <span class="whoami-req">whoami required.</span>
-    </div>
-  </section>
+    <section class="conversation">
+      <div class="conversation-head">
+        <div>
+          <span class="eyebrow">Shared stage · topic-bounded channel</span>
+          <h1 id="channel-topic">Choose a channel</h1>
+        </div>
+        <span class="access" id="channel-access"></span>
+      </div>
+      <div id="messages" class="messages">
+        <div class="empty"><span>≈</span>Select a channel to watch its signal traffic.</div>
+      </div>
+    </section>
+  </main>
 
-  <section class="log-pane">
-    <div class="pane-title">
-      <h2>Signal traffic</h2>
-      <span class="count" id="msg-count">0</span>
-    </div>
-    <div id="log" class="log"></div>
-  </section>
-</main>
-
-<script src="app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

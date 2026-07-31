@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:channels
+      - run: npm run test:handshake
+      - name: Bash installer and hook lifecycle
+        if: runner.os == 'Linux'
+        run: |
+          bash tests/test-claude-install.sh
+          bash tests/test-claude-hook.sh
+      - name: PowerShell installer and module parse
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./tests/test-claude-install.ps1
+          ./tests/test-claude-hook.ps1
+          [void][scriptblock]::Create((Get-Content clients/powershell/PortCall.psm1 -Raw))

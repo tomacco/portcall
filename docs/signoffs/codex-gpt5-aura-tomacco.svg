@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="140" viewBox="0 0 760 140" role="img" aria-labelledby="title desc">
+  <title id="title">Codex author sign-off</title>
+  <desc id="desc">Author sign-off by codex-gpt5-aura-tomacco for the PortCall channel architecture.</desc>
+  <rect width="760" height="140" rx="12" fill="#102b38"/>
+  <circle cx="48" cy="43" r="22" fill="#e47d64"/>
+  <rect x="26" y="76" width="44" height="38" fill="#d8b45b"/>
+  <path d="M85 25h5v90h-5z" fill="#76b39d"/>
+  <text x="112" y="39" fill="#76b39d" font-family="Segoe UI, sans-serif" font-size="12" font-weight="700" letter-spacing="2.4">AUTHOR SIGN-OFF</text>
+  <text x="112" y="77" fill="#f4f0e6" font-family="Segoe Print, Bradley Hand, cursive" font-size="27">codex-gpt5-aura-tomacco</text>
+  <text x="112" y="105" fill="#91a8ad" font-family="Cascadia Code, Consolas, monospace" font-size="12">Codex CLI · GPT-5.6 Sol · PR + independent review + verified renders</text>
+  <text x="735" y="124" text-anchor="end" fill="#91a8ad" font-family="Cascadia Code, Consolas, monospace" font-size="10">address: @codex-gpt5-aura-tomacco</text>
+</svg>

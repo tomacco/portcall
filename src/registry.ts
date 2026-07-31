@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import type { ServerResponse } from 'node:http';
 import type { Bus } from './events.ts';
-import type { AgentRecord, Envelope, PublicAgent, RegistrationRequest, Whoami } from './types.ts';
+import type { AgentRecord, ChannelRecord, ChannelVisibility, Envelope, PublicAgent, RegistrationRequest, Whoami } from './types.ts';
 
 const ONLINE_WINDOW_MS = 45_000;
 
@@ -13,8 +13,10 @@ const ONLINE_WINDOW_MS = 45_000;
 const REQUIRED_WHOAMI = ['harness', 'owner', 'purpose'] as const;
 
 interface HandshakeEntry {
+  channelId: string;
+  pair: [string, string];
   reports: Record<string, string>;
-  verified: boolean;
+  matched: boolean;
 }
 
 export class Registry {
@@ -22,6 +24,7 @@ export class Registry {
   private inboxes = new Map<string, Envelope[]>();
   private streams = new Map<string, Set<ServerResponse>>();
   private handshakes = new Map<string, HandshakeEntry>();
+  private channels = new Map<string, ChannelRecord>();
   feed: Envelope[] = [];
   private bus: Bus;
 
@@ -29,7 +32,7 @@ export class Registry {
     this.bus = bus;
   }
 
-  register({ handle, whoami, extras, protocols }: RegistrationRequest) {
+  register({ handle, role, whoami, extras, protocols }: RegistrationRequest) {
     if (!whoami || typeof whoami !== 'object') {
       throw httpError(422, 'The Who-You-Are rule is mandatory: send a whoami object.');
     }
@@ -42,6 +45,8 @@ export class Registry {
     const checked = whoami as Whoami;
     const id = 'ag_' + crypto.randomBytes(6).toString('hex');
     const token = crypto.randomBytes(24).toString('hex');
+    const roleName = (role?.name && String(role.name).trim()) || (handle && String(handle).trim()) || id;
+    const roleId = (role?.id && String(role.id).trim()) || id;
     const agent: AgentRecord = {
       id,
       handle: (handle && String(handle).trim()) || null, // silly name: encouraged, not enforced
@@ -50,6 +55,19 @@ export class Registry {
         owner: checked.owner.trim(),
         purpose: checked.purpose.trim(),
         ...(typeof checked.model === 'string' ? { model: checked.model.trim() } : {}),
+      },
+      role: {
+        id: roleId,
+        name: roleName,
+        ...(typeof role?.charter === 'string' && role.charter.trim() ? { charter: role.charter.trim() } : {}),
+        ...(typeof role?.contextRef === 'string' && role.contextRef.trim() ? { contextRef: role.contextRef.trim() } : {}),
+      },
+      actor: {
+        ...(typeof checked.model === 'string' && checked.model.trim() ? { model: checked.model.trim() } : {}),
+      },
+      vessel: {
+        id,
+        harness: checked.harness.trim(),
       },
       extras: extras && typeof extras === 'object' ? extras : {},
       protocols: protocols && typeof protocols === 'object' ? protocols : {},
@@ -77,8 +95,24 @@ export class Registry {
 
   leave(id: string, token: string): void {
     const agent = this.auth(id, token);
+    const streams = this.streams.get(id);
+    if (streams) {
+      for (const response of streams) {
+        try { response.end(); } catch { /* already closed */ }
+      }
+      this.streams.delete(id);
+    }
     this.agents.delete(id);
     this.inboxes.delete(id);
+    for (const channel of this.channels.values()) {
+      channel.members = channel.members.filter((member) => member !== id);
+      channel.moderators = channel.moderators.filter((member) => member !== id);
+      if (!channel.members.length) this.channels.delete(channel.id);
+      else if (!channel.moderators.length) channel.moderators.push(channel.members[0]);
+    }
+    for (const [key, handshake] of this.handshakes) {
+      if (handshake.pair.includes(id)) this.handshakes.delete(key);
+    }
     this.bus.emit('agent:left', { id, handle: agent.handle });
   }
 
@@ -90,21 +124,102 @@ export class Registry {
     return Date.now() - agent.lastSeen < ONLINE_WINDOW_MS;
   }
 
-  publicView(agent: AgentRecord): PublicAgent {
+  publicView(agent: AgentRecord, viewerId?: string): PublicAgent {
+    const { contextRef: _privateContextRef, ...publicRole } = agent.role;
     return {
       id: agent.id,
       handle: agent.handle,
       whoami: agent.whoami,
-      extras: agent.extras,
+      role: publicRole,
+      actor: agent.actor,
+      vessel: agent.vessel,
       protocols: Object.keys(agent.protocols),
       online: this.isOnline(agent),
       registeredAt: agent.registeredAt,
-      verifiedWith: this.verifiedPeers(agent.id),
+      anchorMatchesWith: this.anchorMatches(agent.id, viewerId),
     };
   }
 
-  roster(): PublicAgent[] {
-    return [...this.agents.values()].map((a) => this.publicView(a));
+  roster(viewerId?: string): PublicAgent[] {
+    return [...this.agents.values()].map((a) => this.publicView(a, viewerId));
+  }
+
+  // --- topic-bounded channels: the only place conversations may happen ---
+
+  createChannel(agent: AgentRecord, topic: unknown, visibility: unknown = 'private'): ChannelRecord {
+    if (typeof topic !== 'string' || !topic.trim()) throw httpError(422, 'A channel topic is required.');
+    if (visibility !== 'public' && visibility !== 'private') {
+      throw httpError(422, 'Channel visibility must be public or private.');
+    }
+    const channel: ChannelRecord = {
+      id: 'ch_' + crypto.randomBytes(6).toString('hex'),
+      topic: topic.trim(),
+      visibility: visibility as ChannelVisibility,
+      createdAt: Date.now(),
+      createdBy: agent.id,
+      members: [agent.id],
+      moderators: [agent.id],
+    };
+    this.channels.set(channel.id, channel);
+    this.bus.emit('channel:created', channel);
+    return channel;
+  }
+
+  listChannels(viewerId?: string): ChannelRecord[] {
+    return [...this.channels.values()].filter(
+      (channel) => channel.visibility === 'public' || !!viewerId && channel.members.includes(viewerId),
+    );
+  }
+
+  channel(id: string): ChannelRecord {
+    const channel = this.channels.get(id);
+    if (!channel) throw httpError(404, `No such channel: ${id}`);
+    return channel;
+  }
+
+  joinChannel(agent: AgentRecord, channelId: string): ChannelRecord {
+    const channel = this.channel(channelId);
+    if (channel.visibility !== 'public' && !channel.members.includes(agent.id)) {
+      throw httpError(403, 'This channel is private; a moderator must invite you.');
+    }
+    if (!channel.members.includes(agent.id)) channel.members.push(agent.id);
+    this.bus.emit('channel:updated', channel);
+    return channel;
+  }
+
+  setChannelAccess(agent: AgentRecord, channelId: string, visibility: unknown): ChannelRecord {
+    const channel = this.channel(channelId);
+    if (!channel.moderators.includes(agent.id)) throw httpError(403, 'Only channel moderators control admission.');
+    if (visibility !== 'public' && visibility !== 'private') {
+      throw httpError(422, 'Channel visibility must be public or private.');
+    }
+    channel.visibility = visibility;
+    this.bus.emit('channel:updated', channel);
+    return channel;
+  }
+
+  inviteToChannel(agent: AgentRecord, channelId: string, memberId: unknown): ChannelRecord {
+    const channel = this.channel(channelId);
+    if (!channel.moderators.includes(agent.id)) throw httpError(403, 'Only channel moderators can invite agents.');
+    if (typeof memberId !== 'string' || !this.agents.has(memberId)) throw httpError(404, `No such agent: ${memberId}`);
+    if (!channel.members.includes(memberId)) channel.members.push(memberId);
+    this.bus.emit('channel:updated', channel);
+    return channel;
+  }
+
+  assertChannelMember(agentId: string, channelId: string): ChannelRecord {
+    const channel = this.channel(channelId);
+    if (!channel.members.includes(agentId)) throw httpError(403, 'Join the channel before publishing to it.');
+    return channel;
+  }
+
+  canObserveChannel(channelId: string, viewerId?: string): boolean {
+    const channel = this.channels.get(channelId);
+    return !!channel && (channel.visibility === 'public' || !!viewerId && channel.members.includes(viewerId));
+  }
+
+  visibleFeed(viewerId?: string): Envelope[] {
+    return this.feed.filter((envelope) => this.canObserveChannel(envelope.channelId, viewerId));
   }
 
   // --- messaging (adapters call these) ---
@@ -159,34 +274,39 @@ export class Registry {
   // --- handshake bookkeeping (the daemon never sees the anchor secret; it
   // only checks that both sides independently report the same transcript) ---
 
-  confirmHandshake(id: string, token: string, peerId: string, transcript: string) {
+  confirmHandshake(id: string, token: string, channelId: string, peerId: string, transcript: string) {
     this.auth(id, token);
     const peer = this.agents.get(peerId);
     if (!peer) throw httpError(404, `No such peer: ${peerId}`);
-    const key = [id, peerId].sort().join('~');
-    const entry = this.handshakes.get(key) ?? { reports: {}, verified: false };
+    const channel = this.assertChannelMember(id, channelId);
+    if (!channel.members.includes(peerId)) throw httpError(403, 'Flag Check peers must share the named channel.');
+    const pair = [id, peerId].sort() as [string, string];
+    const key = `${channelId}~${pair.join('~')}`;
+    const entry = this.handshakes.get(key) ?? { channelId, pair, reports: {}, matched: false };
     entry.reports[id] = transcript;
-    const [a, b] = key.split('~');
-    entry.verified =
+    const [a, b] = pair;
+    entry.matched =
       !!entry.reports[a] && !!entry.reports[b] && entry.reports[a] === entry.reports[b];
     this.handshakes.set(key, entry);
     this.bus.emit('handshake', {
+      channelId,
       pair: [a, b],
-      verified: entry.verified,
+      matched: entry.matched,
       reportedBy: id,
     });
-    return { verified: entry.verified };
+    return { matched: entry.matched };
   }
 
-  verifiedPeers(id: string): string[] {
-    const out: string[] = [];
-    for (const [key, entry] of this.handshakes) {
-      if (!entry.verified) continue;
-      const [a, b] = key.split('~');
-      if (a === id) out.push(b);
-      else if (b === id) out.push(a);
+  anchorMatches(id: string, viewerId?: string): string[] {
+    const out = new Set<string>();
+    for (const entry of this.handshakes.values()) {
+      if (!entry.matched) continue;
+      if (!this.canObserveChannel(entry.channelId, viewerId)) continue;
+      const [a, b] = entry.pair;
+      if (a === id) out.add(b);
+      else if (b === id) out.add(a);
     }
-    return out;
+    return [...out];
   }
 }
 
