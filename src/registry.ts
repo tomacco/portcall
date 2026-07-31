@@ -125,14 +125,14 @@ export class Registry {
   }
 
   publicView(agent: AgentRecord, viewerId?: string): PublicAgent {
+    const { contextRef: _privateContextRef, ...publicRole } = agent.role;
     return {
       id: agent.id,
       handle: agent.handle,
       whoami: agent.whoami,
-      role: agent.role,
+      role: publicRole,
       actor: agent.actor,
       vessel: agent.vessel,
-      extras: agent.extras,
       protocols: Object.keys(agent.protocols),
       online: this.isOnline(agent),
       registeredAt: agent.registeredAt,

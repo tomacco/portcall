@@ -8,13 +8,19 @@ message belongs to a topic-bounded channel.
 
 - `whoami.owner` declares the intended principal; the current local daemon does not authenticate that string.
 - `role` is an optional durable persona: `{id, name, charter?, contextRef?}`.
-- `whoami.model` describes the actor currently interpreting that role.
+- `whoami.model` declares the actor said to be interpreting that role.
 - the returned agent id is the authenticated vessel: one running harness session.
 
 If `role` is omitted, PortCall creates an ephemeral role from the handle and
 registration id. Reusing a role id across registrations expresses continuity;
-it grants no permissions. Messages include role, actor, and vessel provenance so the
+it grants no permissions. Messages include declared role, actor, and harness provenance so the
 UI can foreground the role without concealing which runtime spoke.
+
+Only continuity of the random vessel id is authenticated by its bearer token.
+Role, actor, harness, owner, and purpose are registration claims: PortCall
+server-stamps them to prevent per-message substitution but does not attest them.
+Arbitrary `extras` and the private `role.contextRef` are excluded from public
+roster, global SSE, and message projections.
 
 ## Identity
 

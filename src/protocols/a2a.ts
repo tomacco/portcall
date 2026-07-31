@@ -111,10 +111,11 @@ export async function handleGatewayRpc(
     }
     // The bearer-authenticated URL agent is the caller. Never accept identity,
     // timestamps, or ids supplied inside an A2A data part.
+    const { contextRef: _privateContextRef, ...publicRole } = agent.role;
     const envelope: Envelope = {
       id: 'msg_' + crypto.randomBytes(6).toString('hex'),
       ts: Date.now(),
-      from: { id: agent.id, handle: agent.handle, role: agent.role, actor: agent.actor, vessel: agent.vessel },
+      from: { id: agent.id, handle: agent.handle, role: publicRole, actor: agent.actor, vessel: agent.vessel },
       channelId,
       kind: typeof supplied?.kind === 'string' ? supplied.kind : 'chat',
       body: supplied?.body && typeof supplied.body === 'object'

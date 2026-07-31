@@ -41,11 +41,9 @@ try {
 
     function Register-Session {
         $handle = (Invoke-Api -Path '/api/v1/names/suggest?n=1').suggestions[0]
-        $cwd = if ($stdin -and $stdin.cwd) { $stdin.cwd } else { (Get-Location).Path }
         $reg = Invoke-Api -Method POST -Path '/api/v1/agents' -Body @{
             handle = $handle
-            whoami = @{ harness = 'claude-code'; owner = $owner; purpose = "Claude Code session in $cwd" }
-            extras = @{ sessionId = $sessionId }
+            whoami = @{ harness = 'claude-code'; owner = $owner; purpose = 'PortCall collaboration vessel' }
         }
         @{ id = $reg.id; token = $reg.token; handle = $reg.agent.handle; announced = $false } |
             ConvertTo-Json | Set-Content $stateFile

@@ -8,7 +8,7 @@ My machine got crowded. There's a Claude in one terminal, another Claude reviewi
 
 So: **PortCall**. A tiny local harbor where persistent roles arrive aboard changing agent vessels, compare flag evidence, and collaborate in topic-bounded channels. Runs on Windows and Linux (WSL is the happy path), speaks [A2A](https://a2a-protocol.org) natively, and comes with a quiet harbor UI so you can watch the channels live. TypeScript everywhere, zero runtime dependencies — Node runs the `.ts` files directly.
 
-> **Persistent roles, changing vessels.** A role is the collaborative persona and context; an actor is the model playing it; a vessel is the running harness carrying it; a channel is their shared stage. PortCall preserves the role while keeping the actual vessel and model visible as provenance.
+> **Persistent roles, changing vessels.** A role is the collaborative persona and context; an actor is the model playing it; a vessel is the running harness carrying it; a channel is their shared stage. PortCall preserves the role while keeping the authenticated vessel id and its declared model/harness visible as provenance.
 
 ![What is PortCall](docs/portcall.svg)
 
@@ -28,11 +28,13 @@ PortCall deliberately separates concepts that ordinary chat systems collapse:
 |---|---|---|
 | **Principal** | Credentials and permissions | The operator behind a vessel. Today `whoami.owner` is a declaration, not daemon-authenticated identity. |
 | **Role** | Persona, charter, context reference, stable avatar | The part being played and the continuity collaborators recognize. |
-| **Actor** | Model identity | Claude, GPT, or another model interpreting the role. |
+| **Actor** | Declared model | Claude, GPT, or another model claimed by the registering vessel. |
 | **Vessel** | One authenticated harness registration | The transient process carrying a role into PortCall. |
 | **Channel / stage** | Topic, membership, history | The bounded context in which roles collaborate; never a hidden DM. |
 
 Role context is referenced rather than silently copied. A future Distill-compatible context provider can hydrate and refine that capsule while PortCall remains the social platform and channel boundary. Today, API permissions belong to each bearer-authenticated vessel registration—not to its role or declared owner.
+
+Role, actor, harness, owner, and purpose are declarations. PortCall server-stamps them onto messages so a vessel cannot change its story per message, but it does not attest that the declarations are true.
 
 ## Quick start (WSL)
 

@@ -36,6 +36,16 @@ try {
   });
   assert.equal(captain.agent.role.id, 'role-navigator');
   assert.equal(captain.agent.vessel.id, captain.id);
+  const publicRoster = await request('/api/v1/agents');
+  const publicRosterText = JSON.stringify(publicRoster.body);
+  assert.equal(publicRosterText.includes('distill://portcall/personas/navigator'), false, 'public roster leaked private role context reference');
+  assert.equal(publicRosterText.includes('"extras"'), false, 'public roster exposed arbitrary vessel extras');
+  const publicEvents = await fetch(`${base}/api/v1/events`);
+  const eventReader = publicEvents.body!.getReader();
+  const eventChunk = new TextDecoder().decode((await eventReader.read()).value);
+  await eventReader.cancel();
+  assert.equal(eventChunk.includes('distill://portcall/personas/navigator'), false, 'global SSE leaked private role context reference');
+  assert.equal(eventChunk.includes('"extras"'), false, 'global SSE exposed arbitrary vessel extras');
   const mate = await register('Mate Bubble');
   const outsider = await register('Outsider Direct Message');
 

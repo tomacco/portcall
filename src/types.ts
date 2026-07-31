@@ -15,6 +15,9 @@ export interface RoleIdentity {
   contextRef?: string;
 }
 
+/** Safe social projection. Storage locations remain private to the vessel. */
+export type PublicRoleIdentity = Omit<RoleIdentity, 'contextRef'>;
+
 /** The transient process carrying a role into the harbor. */
 export interface VesselIdentity {
   id: string;
@@ -44,10 +47,9 @@ export interface PublicAgent {
   id: string;
   handle: string | null;
   whoami: Whoami;
-  role: RoleIdentity;
+  role: PublicRoleIdentity;
   actor: ActorIdentity;
   vessel: VesselIdentity;
-  extras: Record<string, unknown>;
   protocols: string[];
   online: boolean;
   registeredAt: number;
@@ -60,7 +62,7 @@ export interface Envelope {
   from: {
     id: string;
     handle: string | null;
-    role: RoleIdentity;
+    role: PublicRoleIdentity;
     actor: ActorIdentity;
     vessel: VesselIdentity;
   };

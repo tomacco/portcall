@@ -105,7 +105,7 @@ function render() {
     const text = message.kind === 'chat' && typeof message.body?.text === 'string'
       ? message.body.text : `${message.kind} · ${JSON.stringify(message.body)}`;
     return `<article class="message">${avatar(role?.id ?? message.from.id)}<div>
-      <div class="message-head"><span class="message-name">${esc(name)}</span>${provenance ? `<span class="message-provenance">played by ${esc(provenance)}</span>` : ''}<time class="message-time">${new Date(message.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
+      <div class="message-head"><span class="message-name">${esc(name)}</span>${provenance ? `<span class="message-provenance">declares ${esc(provenance)}</span>` : ''}<time class="message-time">${new Date(message.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
       <div class="bubble ${message.kind === 'chat' ? '' : 'control'}">${esc(text)}</div>
     </div></article>`;
   }).join('') : '<div class="empty"><span>≈</span>The channel is calm. No signals yet.</div>';

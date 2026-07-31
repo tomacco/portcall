@@ -28,12 +28,10 @@ api() { # method path [token] [json-body]
 }
 
 register() {
-  local handle cwd payload reg
+  local handle payload reg
   handle="$(api GET '/api/v1/names/suggest?n=1' | jq -r '.suggestions[0]')" || return 1
-  cwd="$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null)"
-  cwd="${cwd:-$PWD}"
-  payload="$(jq -n --arg h "$handle" --arg o "$OWNER" --arg p "Claude Code session in $cwd" --arg s "$SESSION_ID" \
-    '{handle:$h, whoami:{harness:"claude-code", owner:$o, purpose:$p}, extras:{sessionId:$s}}')"
+  payload="$(jq -n --arg h "$handle" --arg o "$OWNER" \
+    '{handle:$h, whoami:{harness:"claude-code", owner:$o, purpose:"PortCall collaboration vessel"}}')"
   reg="$(api POST /api/v1/agents '' "$payload")" || return 1
   printf '%s' "$reg" | jq '{id, token, handle: .agent.handle, announced: false}' > "$STATE"
   chmod 600 "$STATE"

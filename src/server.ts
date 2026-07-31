@@ -50,10 +50,11 @@ export function createServer({ identity = null as string | null }) {
     { kind, body, sig }: { kind?: string; body?: Record<string, unknown>; sig?: string },
   ) {
     const channel = registry.assertChannelMember(fromAgent.id, channelId);
+    const { contextRef: _privateContextRef, ...publicRole } = fromAgent.role;
     const envelope: Envelope = {
       id: 'msg_' + crypto.randomBytes(6).toString('hex'),
       ts: Date.now(),
-      from: { id: fromAgent.id, handle: fromAgent.handle, role: fromAgent.role, actor: fromAgent.actor, vessel: fromAgent.vessel },
+      from: { id: fromAgent.id, handle: fromAgent.handle, role: publicRole, actor: fromAgent.actor, vessel: fromAgent.vessel },
       channelId,
       kind: typeof kind === 'string' && kind ? kind : 'chat',
       body: body ?? {},

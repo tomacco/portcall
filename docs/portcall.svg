@@ -145,7 +145,7 @@
       <g>
         <rect x="50" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#223650"/>
         <text x="185" y="493" fill="#e8dcc3" font-size="13.5" font-family="Georgia, serif" font-style="italic">Role · The Navigator</text>
-        <text x="185" y="510" fill="#6a7f9b" font-size="10.5">vessel: claude-code · actor: Claude</text>
+        <text x="185" y="510" fill="#6a7f9b" font-size="10.5">claims: claude-code · Claude</text>
       </g>
       <g>
         <rect x="345" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.6"/>
@@ -155,7 +155,7 @@
       <g>
         <rect x="640" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#223650"/>
         <text x="775" y="493" fill="#e8dcc3" font-size="13.5" font-family="Georgia, serif" font-style="italic">Role · The Navigator</text>
-        <text x="775" y="510" fill="#6a7f9b" font-size="10.5">new vessel: codex · actor: GPT</text>
+        <text x="775" y="510" fill="#6a7f9b" font-size="10.5">claims: codex · GPT</text>
       </g>
     </g>
 

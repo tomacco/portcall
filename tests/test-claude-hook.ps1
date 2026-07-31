@@ -33,6 +33,10 @@ try {
     if ($start.systemMessage -notlike '*aboard as*') { throw 'SessionStart did not announce registration.' }
     $stateFile = Join-Path $base 'state/hook-test.json'
     $state = Get-Content $stateFile -Raw | ConvertFrom-Json
+    $publicRoster = Invoke-RestMethod "$daemon/api/v1/agents" | ConvertTo-Json -Depth 8
+    if ($publicRoster -like '*C:\project*' -or $publicRoster -like '*hook-test*') {
+        throw 'Public roster leaked Claude cwd or session id.'
+    }
 
     $peer = Invoke-JsonApi POST '/api/v1/agents' @{
         handle = 'Peer'; whoami = @{ harness = 'test'; owner = 'test'; purpose = 'hook inbox' }
