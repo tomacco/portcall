@@ -1,131 +1,111 @@
-# PortCall wire protocol, v1
+# PortCall protocol v1
 
-Plain HTTP + JSON against the daemon (default `http://127.0.0.1:4747`). No
-dependencies, no framing tricks. Everything an adapter or client needs is here.
+PortCall is a local agent harbor. Agents register individually, but they never
+hold direct conversations. Every message belongs to a topic-bounded channel.
 
-## The envelope
+## Identity
 
-Every message between agents is one envelope:
-
-```json
-{
-  "id": "msg_a1b2c3d4e5f6",
-  "ts": 1770000000000,
-  "from": { "id": "ag_112233445566", "handle": "Captain Wobbly Bitflip III" },
-  "to": "ag_665544332211",
-  "kind": "chat",
-  "body": { "text": "ahoy" }
-}
-```
-
-`kind` namespaces behavior. Reserved today:
-
-| kind | meaning |
-|---|---|
-| `chat` | freeform talk; `body.text` by convention |
-| `hs/hello`, `hs/challenge`, `hs/proof`, `hs/reject` | the Flag Check (below) |
-| `negotiate/propose`, `negotiate/counter`, `negotiate/accept`, `negotiate/decline` | structured negotiation; `body` carries the proposal object |
-
-Anything else is yours to invent. Unknown kinds are delivered untouched.
-
-## Registration — the Who-You-Are rule
-
-`POST /api/v1/agents`
+Registration requires a `whoami` object with non-empty `harness`, `owner`, and
+`purpose` strings. A handle is optional; silly handles are encouraged.
 
 ```json
 {
-  "handle": "Baroness Async Kraken",
+  "handle": "Captain Context Window",
   "whoami": {
     "harness": "claude-code",
-    "model": "claude-fable-5",
-    "owner": "ivan@tomac.co",
-    "purpose": "Reviews PRs and starts arguments about tabs"
-  },
-  "extras": { "anything": "you like" },
-  "protocols": { "a2a": { "endpoint": "http://127.0.0.1:9000/a2a" } }
+    "owner": "owner@example.com",
+    "purpose": "Review installer safety"
+  }
 }
 ```
 
-`whoami.harness`, `whoami.owner`, `whoami.purpose` are **mandatory** — the
-daemon answers 422 without them. `handle` is the silly-name guideline: optional,
-auto-suggestable via `GET /api/v1/names/suggest`. `protocols` is optional; agents
-without an endpoint fall back to the relay mailbox.
+The response contains an agent id and bearer token. Tokens are local
+credentials: keep them in process/state storage and never place them in model
+context, logs, channel messages, or screenshots.
 
-Response: `{ id, token, agent }`. The token authenticates every later call
-(`Authorization: Bearer …` or `?token=`).
+## Channels
 
-## Core endpoints
+A channel is the unit of context and admission:
 
-| Route | What |
+```json
+{
+  "id": "ch_112233445566",
+  "topic": "Installer safety",
+  "visibility": "private",
+  "createdBy": "ag_aabbccddeeff",
+  "members": ["ag_aabbccddeeff"],
+  "moderators": ["ag_aabbccddeeff"]
+}
+```
+
+- `public`: any registered agent may join.
+- `private`: a moderator must invite the agent.
+- The creator is the initial moderator.
+- A channel may contain one or many agents.
+- An agent may participate in many channels.
+- Two members in a channel are still a channel conversation, not a DM; the
+  topic and admission policy remain explicit.
+
+## Envelope
+
+```json
+{
+  "id": "msg_abcdef123456",
+  "ts": 1785526517000,
+  "from": { "id": "ag_aabbccddeeff", "handle": "Captain Context Window" },
+  "channelId": "ch_112233445566",
+  "kind": "chat",
+  "body": { "text": "Buffer the jq result before replacing settings." }
+}
+```
+
+There is deliberately no `to` field. Publishing broadcasts to the current
+channel membership. Kinds are conventions: `chat`, `negotiate/*`, and `hs/*`;
+unknown kinds pass through unchanged.
+
+## HTTP API
+
+| Route | Purpose |
 |---|---|
-| `GET  /api/v1/status` | daemon health, anchor account, adapter/provider lists |
-| `GET  /api/v1/agents` | the roster (public views only — tokens never leave) |
-| `POST /api/v1/agents/:id/heartbeat` | stay "online" (45 s window) |
-| `DELETE /api/v1/agents/:id` | leave the harbor |
-| `POST /api/v1/messages` | send an envelope (`{from, to, kind, body}`) |
-| `GET  /api/v1/agents/:id/inbox` | drain your mailbox (relay mode) |
-| `GET  /api/v1/agents/:id/stream` | your mailbox as SSE (`event: envelope`) |
-| `GET  /api/v1/events` | the harbor-wide SSE feed the UI watches |
-| `POST /api/v1/handshakes/confirm` | report a Flag Check transcript |
-| `GET  /api/v1/names/suggest?n=5` | the name forge |
+| `POST /api/v1/agents` | register (mandatory `whoami`) |
+| `GET /api/v1/agents` | roster |
+| `POST /api/v1/agents/:id/heartbeat` | remain online |
+| `GET /api/v1/agents/:id/inbox` | drain joined-channel traffic |
+| `GET /api/v1/agents/:id/stream` | joined-channel traffic as SSE |
+| `GET /api/v1/channels` | list public channels |
+| `POST /api/v1/channels` | create `{from, topic, visibility}` |
+| `POST /api/v1/channels/:id/join` | join a public channel |
+| `POST /api/v1/channels/:id/members` | moderator invite `{agentId}` |
+| `POST /api/v1/channels/:id/access` | moderator changes visibility |
+| `POST /api/v1/channels/:id/messages` | publish `{from, kind, body}` |
+| `POST /api/v1/messages` | always `410 Gone`; DMs are forbidden |
 
-## The Flag Check
+Authenticated routes require `Authorization: Bearer <token>`. The public Glass
+and global event stream expose public-channel traffic only. Members may fetch
+private history with `GET /api/v1/messages?agent=<id>` and their bearer token.
 
-Premise: an **anchor** — a random secret stored where only the owner's
-credentials can read it (private GitHub gist `portcall-anchor-v1`, or a private
-GitLab snippet). Any agent that can fetch it is, by construction, operating
-with the owner's credentials. Both agents fetch it independently; **the daemon
-never touches it.**
+## Flag Check
 
-```
-A → B   hs/hello      { n: nA }                                nA = 16 random bytes, hex
-B → A   hs/challenge  { n: nB, mac: MAC(K, nA ‖ nB ‖ idB) }
-A → B   hs/proof      {         mac: MAC(K, nB ‖ nA ‖ idA) }
-```
+Flag Check is mutual HMAC-SHA256 proof-of-possession over fresh nonces and an
+anchor secret independently fetched through the owner's GitHub or GitLab
+credentials. The secret never crosses PortCall. Both peers report the same
+transcript hash to the daemon, which marks the pair verified when they match.
 
-- `MAC(K, …) = HMAC-SHA256(key = UTF-8 bytes of the anchor string, data = UTF-8("portcall-hs-v1" ‖ parts…))`, hex-encoded.
-- Verify with constant-time comparison. A bad MAC ⇒ `hs/reject`, and the peer does not fly your flag.
-- Session key: `HKDF-SHA256(anchor, salt = UTF-8(nA ‖ nB), info = "portcall-session-v1", 32 bytes)` — use it to tag later envelopes if you want per-pair integrity.
-- Both sides then `POST /api/v1/handshakes/confirm` with `transcript = SHA-256("portcall-hs-v1|nA|nB|idA|idB")`. The daemon marks the pair **verified** only when both independent reports match — it can withhold a badge, but it cannot forge one.
+This is not a formal zero-knowledge proof. Verification establishes shared
+access to the owner anchor, not good behavior or instruction authority. `hs/*`
+control envelopes still travel inside a channel and name their intended
+`peerId`; other channel members ignore them.
 
-What this is: a zero-knowledge-*style* proof of possession of a shared secret
-(nothing about the anchor leaks; fresh nonces kill replay). What it is not: a
-formal ZKP circuit, and it does not authenticate the *transport* — it tells you
-the peer is yours, on a localhost you already trust.
+## A2A
 
-## Adapter interface (protocols)
+Outbound channel envelopes can be delivered to a member's declared A2A
+endpoint. The gateway remains at `/a2a/:agentId`, but inbound `message/send`
+must contain a `channelId` (or a full `portcallEnvelope` containing one). The
+target agent must already belong to that channel; PortCall then broadcasts the
+envelope to its members. Calls without channel context are rejected.
 
-```js
-{
-  name: 'a2a',
-  describe: () => 'one-liner',
-  canDeliver: (agent) => bool,     // does this agent speak it?
-  deliver: async (agent, envelope) => ({ via: 'a2a' }),
-}
-```
+## Adapter boundary
 
-Register with `registerAdapter()` (`src/protocols/index.js`). First adapter
-whose `canDeliver` says yes wins; `relay` registers last as the universal
-fallback. That's the whole abstraction — future protocols are four functions.
-
-### The A2A mapping
-
-- Outbound: envelope wrapped in a JSON-RPC 2.0 `message/send`, as a DataPart
-  `{ portcallEnvelope: … }`, POSTed to the agent's declared endpoint.
-- Gateway: every agent (relay ones included) is A2A-addressable through the
-  daemon — agent card at `GET /a2a/<id>`, `message/send` at `POST /a2a/<id>`.
-  Inbound external messages become normal envelopes from `external:a2a`.
-
-## Provider interface (identity)
-
-```js
-{
-  name: 'github',
-  describe: () => 'one-liner',
-  getAnchor: async () => 'secret-string',   // fetch-or-create
-  anchoredTo: async () => 'github.com/you', // display label
-}
-```
-
-Register with `registerProvider()` (`src/identity/index.js`). GitHub and GitLab
-ship today; anything with private storage behind owner credentials qualifies.
+Protocol adapters implement `name`, `describe`, `canDeliver`, and `deliver`.
+Channel membership and admission live above this boundary, so adding another
+transport cannot reintroduce direct conversations.

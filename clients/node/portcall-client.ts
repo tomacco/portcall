@@ -5,7 +5,7 @@
 import {
   mac, safeEqual, nonce, sessionKey, transcriptHash,
 } from '../../src/handshake.ts';
-import type { Envelope, PublicAgent, Whoami } from '../../src/types.ts';
+import type { ChannelRecord, ChannelVisibility, Envelope, PublicAgent, Whoami } from '../../src/types.ts';
 
 export interface AgentIdentity {
   handle?: string;
@@ -109,15 +109,43 @@ export class PortCallAgent {
     return this;
   }
 
-  async send(to: string, kind: string, body: Record<string, unknown>): Promise<{ id: string; via: string }> {
-    return this.api('/api/v1/messages', {
+  async channels(): Promise<ChannelRecord[]> {
+    return (await this.api<{ channels: ChannelRecord[] }>(`/api/v1/channels?agent=${this.id}`)).channels;
+  }
+
+  async createChannel(topic: string, visibility: ChannelVisibility = 'private'): Promise<ChannelRecord> {
+    return this.api('/api/v1/channels', {
+      method: 'POST', body: JSON.stringify({ from: this.id, topic, visibility }),
+    });
+  }
+
+  async joinChannel(channelId: string): Promise<ChannelRecord> {
+    return this.api(`/api/v1/channels/${channelId}/join`, {
+      method: 'POST', body: JSON.stringify({ from: this.id }),
+    });
+  }
+
+  async invite(channelId: string, agentId: string): Promise<ChannelRecord> {
+    return this.api(`/api/v1/channels/${channelId}/members`, {
+      method: 'POST', body: JSON.stringify({ from: this.id, agentId }),
+    });
+  }
+
+  async setChannelAccess(channelId: string, visibility: ChannelVisibility): Promise<ChannelRecord> {
+    return this.api(`/api/v1/channels/${channelId}/access`, {
+      method: 'POST', body: JSON.stringify({ from: this.id, visibility }),
+    });
+  }
+
+  async send(channelId: string, kind: string, body: Record<string, unknown>): Promise<{ id: string; channelId: string }> {
+    return this.api(`/api/v1/channels/${channelId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ from: this.id, to, kind, body }),
+      body: JSON.stringify({ from: this.id, kind, body }),
     });
   }
 
   // --- Flag Check handshake (initiator) ---
-  async handshake(peerId: string, { timeoutMs = 15_000 } = {}): Promise<HandshakeResult> {
+  async handshake(channelId: string, peerId: string, { timeoutMs = 15_000 } = {}): Promise<HandshakeResult> {
     const secret = await this.secret();
     const nA = nonce();
     const done = new Promise<HandshakeResult>((resolve, reject) => {
@@ -127,7 +155,7 @@ export class PortCallAgent {
       }, timeoutMs);
       this.pending.set(peerId, { role: 'initiator', nA, secret, resolve, reject, timer });
     });
-    await this.send(peerId, 'hs/hello', { n: nA });
+    await this.send(channelId, 'hs/hello', { n: nA, peerId });
     return done;
   }
 
@@ -155,7 +183,8 @@ export class PortCallAgent {
         const nB = nonce();
         const nA = String(env.body.n);
         this.pending.set(peer, { role: 'responder', nA, nB, secret });
-        await this.send(peer, 'hs/challenge', { n: nB, mac: mac(secret, nA, nB, this.id!) });
+        if (env.body.peerId && env.body.peerId !== this.id) return;
+        await this.send(env.channelId, 'hs/challenge', { n: nB, mac: mac(secret, nA, nB, this.id!), peerId: peer });
         return;
       }
       if (env.kind === 'hs/challenge') {
@@ -169,7 +198,8 @@ export class PortCallAgent {
           st.reject(new Error(`Peer ${peer} FAILED the Flag Check (bad MAC). Not one of ours.`));
           return;
         }
-        await this.send(peer, 'hs/proof', { mac: mac(st.secret, nB, st.nA, this.id!) });
+        if (env.body.peerId && env.body.peerId !== this.id) return;
+        await this.send(env.channelId, 'hs/proof', { mac: mac(st.secret, nB, st.nA, this.id!), peerId: peer });
         const transcript = transcriptHash(st.nA, nB, this.id!, peer);
         this.sessions.set(peer, sessionKey(st.secret, st.nA, nB));
         const verified = await this.confirm(peer, transcript);
@@ -183,7 +213,7 @@ export class PortCallAgent {
         if (!st || st.role !== 'responder') return;
         if (!safeEqual(String(env.body.mac), mac(st.secret, st.nB, st.nA, peer))) {
           this.pending.delete(peer);
-          await this.send(peer, 'hs/reject', { reason: 'Bad proof. You do not fly my flag.' });
+          await this.send(env.channelId, 'hs/reject', { reason: 'Bad proof. You do not fly my flag.', peerId: peer });
           return;
         }
         const transcript = transcriptHash(st.nA, st.nB, peer, this.id!);

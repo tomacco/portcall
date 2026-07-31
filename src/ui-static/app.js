@@ -1,117 +1,128 @@
-// Harbor Master's Glass — watches the daemon over SSE, redraws the roster on
-// crew events, appends signal traffic live.
-
 const $ = (id) => document.getElementById(id);
-let msgCount = 0;
+let agents = [];
+let channels = [];
+let feed = [];
+let selectedChannel = null;
 
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s ?? '';
-  return d.innerHTML;
+function esc(value) {
+  const node = document.createElement('div');
+  node.textContent = value ?? '';
+  return node.innerHTML;
 }
+
+function hash(seed) {
+  let value = 2166136261;
+  for (const char of seed) value = Math.imul(value ^ char.charCodeAt(0), 16777619);
+  return value >>> 0;
+}
+
+// Stable, local-only crew portraits. The same agent id always yields the same
+// palette, face, eyes, and cap; no image service or persisted profile needed.
+function avatar(seed) {
+  const value = hash(seed);
+  const palettes = [
+    ['#d8b45b', '#295f70'], ['#e47d64', '#173b49'], ['#76b39d', '#214b59'],
+    ['#8aa8c2', '#2d5262'], ['#d79c6b', '#254753'], ['#a99bc5', '#234b58'],
+  ];
+  const [skin, sea] = palettes[value % palettes.length];
+  const eyeY = 45 + (value % 5);
+  const eyeGap = 12 + (value % 4);
+  const mouth = value % 2 ? 'M39 61 Q50 68 61 61' : 'M40 64 Q50 59 60 64';
+  const brim = 27 + (value % 5);
+  return `<span class="avatar" aria-hidden="true"><svg viewBox="0 0 100 100">
+    <rect width="100" height="100" fill="${sea}"/>
+    <circle cx="50" cy="54" r="30" fill="${skin}"/>
+    <path d="M18 ${brim} Q50 4 82 ${brim} L77 36 H23Z" fill="#f4f0e6"/>
+    <path d="M26 ${brim} H74" stroke="#102b38" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="${50 - eyeGap}" cy="${eyeY}" r="3" fill="#102b38"/>
+    <circle cx="${50 + eyeGap}" cy="${eyeY}" r="3" fill="#102b38"/>
+    <path d="${mouth}" fill="none" stroke="#102b38" stroke-width="3" stroke-linecap="round"/>
+  </svg></span>`;
+}
+
+const agentById = (id) => agents.find((agent) => agent.id === id);
 
 async function refreshStatus() {
   try {
-    const s = await (await fetch('/api/v1/status')).json();
+    const status = await (await fetch('/api/v1/status')).json();
     $('daemon-pip').classList.add('up');
-    $('status-text').textContent =
-      `anchored to ${s.anchoredTo ?? s.identityProvider ?? 'nothing'} · ` +
-      `${s.online}/${s.agents} aboard · up ${Math.floor(s.uptimeSec / 60)}m`;
+    $('status-text').textContent = `${status.online}/${status.agents} aboard · ${channels.length} channels · up ${Math.floor(status.uptimeSec / 60)}m`;
   } catch {
     $('daemon-pip').classList.remove('up');
-    $('status-text').textContent = 'daemon unreachable — is portcalld running?';
+    $('status-text').textContent = 'harbor master unreachable';
   }
 }
 
-async function refreshRoster() {
+async function refreshData() {
   try {
-    const { agents } = await (await fetch('/api/v1/agents')).json();
-    $('crew-count').textContent = agents.filter((a) => a.online).length;
-    const roster = $('roster');
-    if (!agents.length) {
-      roster.innerHTML = '<div class="empty">The harbor is quiet. No sails on the horizon.<br>Send an agent to <code>/api/v1/agents</code>.</div>';
-      return;
+    const [agentData, channelData, messageData] = await Promise.all([
+      fetch('/api/v1/agents').then((response) => response.json()),
+      fetch('/api/v1/channels').then((response) => response.json()),
+      fetch('/api/v1/messages?n=400').then((response) => response.json()),
+    ]);
+    agents = agentData.agents;
+    channels = channelData.channels;
+    feed = messageData.messages;
+    if (!selectedChannel || !channels.some((channel) => channel.id === selectedChannel)) {
+      selectedChannel = channels[0]?.id ?? null;
     }
-    roster.innerHTML = agents
-      .map((a) => {
-        const verified = a.verifiedWith.length
-          ? `<span class="badge verified">⚑ flag checked ×${a.verifiedWith.length}</span>`
-          : '<span class="badge unverified">unverified</span>';
-        return `
-        <div class="crew-card ${a.online ? 'online' : 'gone'}" data-id="${esc(a.id)}">
-          <div class="crew-name">${esc(a.handle ?? a.id)} ${verified}</div>
-          <div class="crew-whoami">
-            <b>who</b> ${esc(a.whoami.harness)}${a.whoami.model ? ' · ' + esc(a.whoami.model) : ''}<br>
-            <b>owner</b> ${esc(a.whoami.owner)}<br>
-            <b>purpose</b> ${esc(a.whoami.purpose)}<br>
-            <b>speaks</b> ${esc(a.protocols.join(', ') || 'relay')} · <b>id</b> ${esc(a.id)}
-          </div>
-        </div>`;
-      })
-      .join('');
-  } catch { /* daemon will come back */ }
+    render();
+    refreshStatus();
+  } catch { /* the next event/poll retries */ }
 }
 
-function kindClass(kind) {
-  if (kind.startsWith('hs/')) return 'kind-hs';
-  if (kind.startsWith('negotiate/')) return 'kind-negotiate';
-  if (kind === 'chat') return 'kind-chat';
-  return 'kind-system';
-}
+function render() {
+  $('channel-count').textContent = channels.length;
+  $('crew-count').textContent = agents.filter((agent) => agent.online).length;
+  $('channels').innerHTML = channels.length ? channels.map((channel) => `
+    <button class="channel ${channel.id === selectedChannel ? 'active' : ''}" data-channel="${esc(channel.id)}">
+      <span class="wave">≈</span><span class="topic">${esc(channel.topic)}</span><span class="members">${channel.members.length}</span>
+    </button>`).join('') : '<div class="empty">No channels afloat.</div>';
+  document.querySelectorAll('[data-channel]').forEach((button) => button.addEventListener('click', () => {
+    selectedChannel = button.dataset.channel;
+    render();
+  }));
 
-function appendLog(kind, html) {
-  const log = $('log');
-  const empty = log.querySelector('.empty');
-  if (empty) empty.remove();
-  const el = document.createElement('div');
-  el.className = 'entry';
-  const ts = new Date().toLocaleTimeString([], { hour12: false });
-  el.innerHTML = `<span class="ts">${ts}</span><span class="kind ${kindClass(kind)}">${esc(kind)}</span><span class="what">${html}</span>`;
-  log.appendChild(el);
-  while (log.children.length > 400) log.removeChild(log.firstChild);
-  log.scrollTop = log.scrollHeight;
-  $('msg-count').textContent = ++msgCount;
-}
+  $('roster').innerHTML = agents.map((agent) => `
+    <div class="crew ${agent.online ? '' : 'offline'}">
+      ${avatar(agent.id)}
+      <div class="crew-copy"><div class="crew-name">${esc(agent.handle ?? agent.id)}</div>
+      <div class="crew-meta">${esc(agent.whoami.harness)} · ${agent.verifiedWith.length ? 'flag checked' : 'unverified'}</div></div>
+    </div>`).join('');
 
-function nameOf(ref) {
-  return `<span class="who">${esc(ref?.handle ?? ref?.id ?? '?')}</span>`;
+  const channel = channels.find((candidate) => candidate.id === selectedChannel);
+  $('channel-topic').textContent = channel?.topic ?? 'Choose a channel';
+  $('channel-access').textContent = channel ? `${channel.visibility} · ${channel.members.length} aboard` : '';
+  $('channel-access').className = `access ${channel?.visibility ?? ''}`;
+  const messages = feed.filter((message) => message.channelId === selectedChannel);
+  $('messages').innerHTML = messages.length ? messages.map((message) => {
+    const author = agentById(message.from.id);
+    const name = message.from.handle ?? author?.handle ?? message.from.id;
+    const text = message.kind === 'chat' && typeof message.body?.text === 'string'
+      ? message.body.text : `${message.kind} · ${JSON.stringify(message.body)}`;
+    return `<article class="message">${avatar(message.from.id)}<div>
+      <div class="message-head"><span class="message-name">${esc(name)}</span><time class="message-time">${new Date(message.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
+      <div class="bubble ${message.kind === 'chat' ? '' : 'control'}">${esc(text)}</div>
+    </div></article>`;
+  }).join('') : '<div class="empty"><span>≈</span>The channel is calm. No signals yet.</div>';
+  $('messages').scrollTop = $('messages').scrollHeight;
 }
 
 function watch() {
-  const es = new EventSource('/api/v1/events');
-  es.addEventListener('agent:joined', (e) => {
-    const a = JSON.parse(e.data);
-    appendLog('system', `${nameOf(a)} sails into harbor <span class="arrow">(${esc(a.whoami.harness)}, ${esc(a.whoami.purpose)})</span>`);
-    refreshRoster();
+  const events = new EventSource('/api/v1/events');
+  for (const event of ['agent:joined', 'agent:left', 'channel:created', 'channel:updated', 'handshake']) {
+    events.addEventListener(event, refreshData);
+  }
+  events.addEventListener('message', (event) => {
+    const message = JSON.parse(event.data);
+    feed.push(message);
+    if (feed.length > 400) feed.shift();
+    render();
   });
-  es.addEventListener('agent:left', (e) => {
-    const a = JSON.parse(e.data);
-    appendLog('system', `${nameOf(a)} weighs anchor and departs`);
-    refreshRoster();
-  });
-  es.addEventListener('message', (e) => {
-    const m = JSON.parse(e.data);
-    const to = `<span class="who">${esc(m.to)}</span>`;
-    let detail = '';
-    if (m.kind === 'chat' && m.body?.text) detail = ` — “${esc(m.body.text)}”`;
-    else if (m.kind.startsWith('hs/')) detail = ' <span class="arrow">(flag check in progress)</span>';
-    else if (m.body && Object.keys(m.body).length) detail = ` <span class="arrow">${esc(JSON.stringify(m.body).slice(0, 120))}</span>`;
-    appendLog(m.kind, `${nameOf(m.from)} <span class="arrow">→</span> ${to}${detail} <span class="arrow">via ${esc(m.via ?? '?')}</span>`);
-  });
-  es.addEventListener('handshake', (e) => {
-    const h = JSON.parse(e.data);
-    if (h.verified) {
-      appendLog('hs/verified', `<span class="verified-note">⚑ FLAG CHECK PASSED</span> — ${esc(h.pair[0])} and ${esc(h.pair[1])} sail under the same flag`);
-    }
-    refreshRoster();
-  });
-  es.onerror = () => refreshStatus();
-  es.onopen = () => refreshStatus();
+  events.onopen = refreshStatus;
+  events.onerror = refreshStatus;
 }
 
-$('log').innerHTML = '<div class="empty">No signals yet. The sea is calm.</div>';
-refreshStatus();
-refreshRoster();
+refreshData();
 watch();
-setInterval(refreshStatus, 10_000);
-setInterval(refreshRoster, 15_000);
+setInterval(refreshData, 15_000);

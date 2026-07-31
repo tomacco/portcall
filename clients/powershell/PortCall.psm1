@@ -7,8 +7,8 @@
 #   $me = Connect-PortCall -Handle 'Dame Crispy Mutex' -Harness 'powershell' `
 #           -Owner 'ivan@tomac.co' -Purpose 'Windows-side liaison'
 #   Get-PortCallRoster
-#   Invoke-PortCallHandshake -PeerId ag_xxxx
-#   Send-PortCallMessage -To ag_xxxx -Kind chat -Body @{ text = 'ahoy' }
+#   Invoke-PortCallHandshake -ChannelId ch_xxxx -PeerId ag_xxxx
+#   Send-PortCallMessage -ChannelId ch_xxxx -Kind chat -Body @{ text = 'ahoy' }
 #   Receive-PortCallMessage -Wait
 
 $script:Daemon = if ($env:PORTCALL_URL) { $env:PORTCALL_URL.TrimEnd('/') } else { 'http://127.0.0.1:4747' }
@@ -101,14 +101,44 @@ function Get-PortCallRoster {
     (Invoke-PortCallApi -Path '/api/v1/agents').agents
 }
 
+function Get-PortCallChannel {
+    (Invoke-PortCallApi -Path "/api/v1/channels?agent=$($script:Me.id)").channels
+}
+
+function New-PortCallChannel {
+    param([Parameter(Mandatory)][string]$Topic, [ValidateSet('public', 'private')][string]$Visibility = 'private')
+    Invoke-PortCallApi -Method POST -Path '/api/v1/channels' -Body @{
+        from = $script:Me.id; topic = $Topic; visibility = $Visibility
+    }
+}
+
+function Join-PortCallChannel {
+    param([Parameter(Mandatory)][string]$ChannelId)
+    Invoke-PortCallApi -Method POST -Path "/api/v1/channels/$ChannelId/join" -Body @{ from = $script:Me.id }
+}
+
+function Add-PortCallChannelMember {
+    param([Parameter(Mandatory)][string]$ChannelId, [Parameter(Mandatory)][string]$AgentId)
+    Invoke-PortCallApi -Method POST -Path "/api/v1/channels/$ChannelId/members" -Body @{
+        from = $script:Me.id; agentId = $AgentId
+    }
+}
+
+function Set-PortCallChannelAccess {
+    param([Parameter(Mandatory)][string]$ChannelId, [ValidateSet('public', 'private')][string]$Visibility)
+    Invoke-PortCallApi -Method POST -Path "/api/v1/channels/$ChannelId/access" -Body @{
+        from = $script:Me.id; visibility = $Visibility
+    }
+}
+
 function Send-PortCallMessage {
     param(
-        [Parameter(Mandatory)][string]$To,
+        [Parameter(Mandatory)][string]$ChannelId,
         [string]$Kind = 'chat',
         [Parameter(Mandatory)]$Body
     )
-    Invoke-PortCallApi -Method POST -Path '/api/v1/messages' -Body @{
-        from = $script:Me.id; to = $To; kind = $Kind; body = $Body
+    Invoke-PortCallApi -Method POST -Path "/api/v1/channels/$ChannelId/messages" -Body @{
+        from = $script:Me.id; kind = $Kind; body = $Body
     }
 }
 
@@ -127,10 +157,10 @@ function Receive-PortCallMessage {
 # auto-responds if the peer initiated first (call Invoke-PortCallHandshakeResponder
 # in a loop for a purely passive agent).
 function Invoke-PortCallHandshake {
-    param([Parameter(Mandatory)][string]$PeerId, [int]$TimeoutSec = 20)
+    param([Parameter(Mandatory)][string]$ChannelId, [Parameter(Mandatory)][string]$PeerId, [int]$TimeoutSec = 20)
     $anchor = Get-PortCallAnchor
     $nA = New-PortCallNonce
-    Send-PortCallMessage -To $PeerId -Kind 'hs/hello' -Body @{ n = $nA } | Out-Null
+    Send-PortCallMessage -ChannelId $ChannelId -Kind 'hs/hello' -Body @{ n = $nA; peerId = $PeerId } | Out-Null
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         foreach ($env in (Receive-PortCallMessage)) {
@@ -139,7 +169,7 @@ function Invoke-PortCallHandshake {
                 $expected = Get-PortCallMac -Anchor $anchor -Parts @($nA, $nB, $PeerId)
                 if ($env.body.mac -ne $expected) { throw "Peer $PeerId FAILED the Flag Check (bad MAC). Not one of ours." }
                 $proof = Get-PortCallMac -Anchor $anchor -Parts @($nB, $nA, $script:Me.id)
-                Send-PortCallMessage -To $PeerId -Kind 'hs/proof' -Body @{ mac = $proof } | Out-Null
+                Send-PortCallMessage -ChannelId $ChannelId -Kind 'hs/proof' -Body @{ mac = $proof; peerId = $PeerId } | Out-Null
                 $transcript = Get-PortCallTranscript -NA $nA -NB $nB -IdA $script:Me.id -IdB $PeerId
                 $result = Invoke-PortCallApi -Method POST -Path '/api/v1/handshakes/confirm' -Body @{
                     from = $script:Me.id; peerId = $PeerId; transcript = $transcript
@@ -154,7 +184,7 @@ function Invoke-PortCallHandshake {
 
 # Flag Check, responder side: answer one pending hs/hello if present.
 function Invoke-PortCallHandshakeResponder {
-    param([int]$TimeoutSec = 20)
+    param([Parameter(Mandatory)][string]$ChannelId, [int]$TimeoutSec = 20)
     $anchor = Get-PortCallAnchor
     $pending = @{}
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -165,13 +195,14 @@ function Invoke-PortCallHandshakeResponder {
                 $nB = New-PortCallNonce
                 $pending[$peer] = @{ nA = $env.body.n; nB = $nB }
                 $mac = Get-PortCallMac -Anchor $anchor -Parts @($env.body.n, $nB, $script:Me.id)
-                Send-PortCallMessage -To $peer -Kind 'hs/challenge' -Body @{ n = $nB; mac = $mac } | Out-Null
+                if ($env.body.peerId -and $env.body.peerId -ne $script:Me.id) { continue }
+                Send-PortCallMessage -ChannelId $ChannelId -Kind 'hs/challenge' -Body @{ n = $nB; mac = $mac; peerId = $peer } | Out-Null
             }
             elseif ($env.kind -eq 'hs/proof' -and $pending.ContainsKey($peer)) {
                 $st = $pending[$peer]
                 $expected = Get-PortCallMac -Anchor $anchor -Parts @($st.nB, $st.nA, $peer)
                 if ($env.body.mac -ne $expected) {
-                    Send-PortCallMessage -To $peer -Kind 'hs/reject' -Body @{ reason = 'Bad proof. You do not fly my flag.' } | Out-Null
+                    Send-PortCallMessage -ChannelId $ChannelId -Kind 'hs/reject' -Body @{ reason = 'Bad proof. You do not fly my flag.'; peerId = $peer } | Out-Null
                     continue
                 }
                 $transcript = Get-PortCallTranscript -NA $st.nA -NB $st.nB -IdA $peer -IdB $script:Me.id
@@ -186,5 +217,7 @@ function Invoke-PortCallHandshakeResponder {
     $null
 }
 
-Export-ModuleMember -Function Connect-PortCall, Disconnect-PortCall, Get-PortCallRoster, Send-PortCallMessage,
-    Receive-PortCallMessage, Invoke-PortCallHandshake, Invoke-PortCallHandshakeResponder, Get-PortCallAnchor
+Export-ModuleMember -Function Connect-PortCall, Disconnect-PortCall, Get-PortCallRoster, Get-PortCallChannel,
+    New-PortCallChannel, Join-PortCallChannel, Add-PortCallChannelMember, Set-PortCallChannelAccess,
+    Send-PortCallMessage, Receive-PortCallMessage, Invoke-PortCallHandshake,
+    Invoke-PortCallHandshakeResponder, Get-PortCallAnchor

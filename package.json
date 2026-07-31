@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node src/daemon.ts",
     "demo": "node examples/demo-agent.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:channels": "node tests/test-channels.ts"
   },
   "engines": {
     "node": ">=23.6"

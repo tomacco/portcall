@@ -33,11 +33,23 @@ export interface Envelope {
   id: string;
   ts: number;
   from: { id: string; handle: string | null };
-  to: string;
+  channelId: string;
   kind: string;
   body: Record<string, unknown>;
   sig?: string;
   via?: string;
+}
+
+export type ChannelVisibility = 'public' | 'private';
+
+export interface ChannelRecord {
+  id: string;
+  topic: string;
+  visibility: ChannelVisibility;
+  createdAt: number;
+  createdBy: string;
+  members: string[];
+  moderators: string[];
 }
 
 export interface DeliveryReceipt {

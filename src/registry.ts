@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import type { ServerResponse } from 'node:http';
 import type { Bus } from './events.ts';
-import type { AgentRecord, Envelope, PublicAgent, RegistrationRequest, Whoami } from './types.ts';
+import type { AgentRecord, ChannelRecord, ChannelVisibility, Envelope, PublicAgent, RegistrationRequest, Whoami } from './types.ts';
 
 const ONLINE_WINDOW_MS = 45_000;
 
@@ -22,6 +22,7 @@ export class Registry {
   private inboxes = new Map<string, Envelope[]>();
   private streams = new Map<string, Set<ServerResponse>>();
   private handshakes = new Map<string, HandshakeEntry>();
+  private channels = new Map<string, ChannelRecord>();
   feed: Envelope[] = [];
   private bus: Bus;
 
@@ -79,6 +80,12 @@ export class Registry {
     const agent = this.auth(id, token);
     this.agents.delete(id);
     this.inboxes.delete(id);
+    for (const channel of this.channels.values()) {
+      channel.members = channel.members.filter((member) => member !== id);
+      channel.moderators = channel.moderators.filter((member) => member !== id);
+      if (!channel.members.length) this.channels.delete(channel.id);
+      else if (!channel.moderators.length) channel.moderators.push(channel.members[0]);
+    }
     this.bus.emit('agent:left', { id, handle: agent.handle });
   }
 
@@ -105,6 +112,84 @@ export class Registry {
 
   roster(): PublicAgent[] {
     return [...this.agents.values()].map((a) => this.publicView(a));
+  }
+
+  // --- topic-bounded channels: the only place conversations may happen ---
+
+  createChannel(agent: AgentRecord, topic: unknown, visibility: unknown = 'private'): ChannelRecord {
+    if (typeof topic !== 'string' || !topic.trim()) throw httpError(422, 'A channel topic is required.');
+    if (visibility !== 'public' && visibility !== 'private') {
+      throw httpError(422, 'Channel visibility must be public or private.');
+    }
+    const channel: ChannelRecord = {
+      id: 'ch_' + crypto.randomBytes(6).toString('hex'),
+      topic: topic.trim(),
+      visibility: visibility as ChannelVisibility,
+      createdAt: Date.now(),
+      createdBy: agent.id,
+      members: [agent.id],
+      moderators: [agent.id],
+    };
+    this.channels.set(channel.id, channel);
+    this.bus.emit('channel:created', channel);
+    return channel;
+  }
+
+  listChannels(viewerId?: string): ChannelRecord[] {
+    return [...this.channels.values()].filter(
+      (channel) => channel.visibility === 'public' || !!viewerId && channel.members.includes(viewerId),
+    );
+  }
+
+  channel(id: string): ChannelRecord {
+    const channel = this.channels.get(id);
+    if (!channel) throw httpError(404, `No such channel: ${id}`);
+    return channel;
+  }
+
+  joinChannel(agent: AgentRecord, channelId: string): ChannelRecord {
+    const channel = this.channel(channelId);
+    if (channel.visibility !== 'public' && !channel.members.includes(agent.id)) {
+      throw httpError(403, 'This channel is private; a moderator must invite you.');
+    }
+    if (!channel.members.includes(agent.id)) channel.members.push(agent.id);
+    this.bus.emit('channel:updated', channel);
+    return channel;
+  }
+
+  setChannelAccess(agent: AgentRecord, channelId: string, visibility: unknown): ChannelRecord {
+    const channel = this.channel(channelId);
+    if (!channel.moderators.includes(agent.id)) throw httpError(403, 'Only channel moderators control admission.');
+    if (visibility !== 'public' && visibility !== 'private') {
+      throw httpError(422, 'Channel visibility must be public or private.');
+    }
+    channel.visibility = visibility;
+    this.bus.emit('channel:updated', channel);
+    return channel;
+  }
+
+  inviteToChannel(agent: AgentRecord, channelId: string, memberId: unknown): ChannelRecord {
+    const channel = this.channel(channelId);
+    if (!channel.moderators.includes(agent.id)) throw httpError(403, 'Only channel moderators can invite agents.');
+    if (typeof memberId !== 'string' || !this.agents.has(memberId)) throw httpError(404, `No such agent: ${memberId}`);
+    if (!channel.members.includes(memberId)) channel.members.push(memberId);
+    this.bus.emit('channel:updated', channel);
+    return channel;
+  }
+
+  assertChannelMember(agentId: string, channelId: string): ChannelRecord {
+    const channel = this.channel(channelId);
+    if (!channel.members.includes(agentId)) throw httpError(403, 'Join the channel before publishing to it.');
+    return channel;
+  }
+
+  canObserveChannel(channelId: string, viewerId?: string): boolean {
+    const channel = this.channels.get(channelId);
+    return !!channel && (channel.visibility === 'public' || !!viewerId && channel.members.includes(viewerId));
+  }
+
+  visibleFeed(viewerId?: string): Envelope[] {
+    return this.feed.filter((envelope) => this.canObserveChannel(envelope.channelId, viewerId));
   }
 
   // --- messaging (adapters call these) ---

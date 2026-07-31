@@ -37,7 +37,7 @@ const agent = new PortCallAgent({
 
 agent.on('chat', async (env) => {
   const line = LINES[Math.floor(Math.random() * LINES.length)];
-  await agent.send(env.from.id, 'chat', { text: line });
+  await agent.send(env.channelId, 'chat', { text: line });
 });
 
 agent.on('hs/reject', (env) => {
@@ -47,13 +47,18 @@ agent.on('hs/reject', (env) => {
 const me = await agent.join();
 console.log(`Joined as "${me.handle}" (${me.id})`);
 
+const topic = 'Harbor introductions';
+let channel = (await agent.channels()).find((candidate) => candidate.topic === topic && candidate.visibility === 'public');
+channel = channel ? await agent.joinChannel(channel.id) : await agent.createChannel(topic, 'public');
+console.log(`In channel "${channel.topic}" (${channel.id})`);
+
 if (!noVerify) {
-  for (const peer of await agent.roster()) {
+  for (const peer of (await agent.roster()).filter((candidate) => channel!.members.includes(candidate.id))) {
     if (peer.id === me.id) continue;
     try {
-      const { verified } = await agent.handshake(peer.id);
+      const { verified } = await agent.handshake(channel.id, peer.id);
       console.log(`Flag Check with "${peer.handle}": ${verified ? 'VERIFIED — one of ours ⚓' : 'reported, awaiting their side'}`);
-      await agent.send(peer.id, 'chat', { text: `Well met, ${peer.handle}! Fine weather on localhost today.` });
+      await agent.send(channel.id, 'chat', { text: `Well met, ${peer.handle}! Fine weather on localhost today.` });
     } catch (err: any) {
       console.log(`Flag Check with "${peer.handle}" failed: ${err.message}`);
     }
