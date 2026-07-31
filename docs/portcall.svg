@@ -1,100 +1,193 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" font-family="Georgia, 'Palatino Linotype', serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 712" font-family="Georgia, 'Palatino Linotype', serif">
+  <!-- PortCall explainer — ukiyo-e woodblock sea (Hokusai sailed on Prussian
+       blue; so do we) inside a vintage admiralty-poster frame. -->
   <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0a121d"/>
-      <stop offset="1" stop-color="#101c2e"/>
-    </linearGradient>
-    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0d1f30"/>
-      <stop offset="1" stop-color="#081420"/>
-    </linearGradient>
-    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
-      <path d="M60 0H0V60" fill="none" stroke="#c9a227" stroke-opacity="0.06"/>
+    <clipPath id="frame-clip"><rect x="14" y="14" width="932" height="684"/></clipPath>
+    <pattern id="sky-hatch" width="8" height="14" patternUnits="userSpaceOnUse">
+      <path d="M0 7 H8" stroke="#c9a227" stroke-opacity="0.07" stroke-width="1"/>
     </pattern>
+    <pattern id="plank" width="14" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(-4)">
+      <path d="M0 4 H14" stroke="#0a121d" stroke-opacity="0.5" stroke-width="1.4"/>
+    </pattern>
+    <!-- one foam crest: a curling hook plus woodblock spray dots -->
+    <g id="crest">
+      <path d="M6 4 C0 -12 -18 -16 -30 -6 C-22 -13 -8 -10 -4 0 C-13 1 -18 8 -13 15"
+            fill="none" stroke="#e8dcc3" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="-36" cy="-4" r="2.6" fill="#e8dcc3"/>
+      <circle cx="-43" cy="3" r="1.8" fill="#e8dcc3"/>
+      <circle cx="-33" cy="6" r="1.4" fill="#e8dcc3"/>
+    </g>
+    <!-- two-masted trader, woodblock-flat, facing right -->
+    <g id="ship">
+      <path d="M-86 -6 Q0 8 86 -6 L66 26 Q0 40 -66 26 Z" fill="#16243a" stroke="#c9a227" stroke-width="1.6"/>
+      <path d="M-86 -6 Q0 8 86 -6 L66 26 Q0 40 -66 26 Z" fill="url(#plank)"/>
+      <path d="M-84 -4 Q0 9 84 -4" fill="none" stroke="#c9a227" stroke-width="1" stroke-opacity="0.6"/>
+      <rect x="-30" y="-146" width="3.5" height="141" fill="#c9a227"/>
+      <rect x="28" y="-122" width="3.5" height="117" fill="#c9a227"/>
+      <path d="M86 -6 L118 -14" stroke="#c9a227" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M-27 -140 Q26 -128 22 -64 Q-8 -78 -27 -64 Z" fill="#e8dcc3"/>
+      <path d="M-27 -128 Q14 -118 12 -70" fill="none" stroke="#a99f88" stroke-width="1"/>
+      <path d="M31 -116 Q76 -96 66 -34 Q46 -48 31 -40 Z" fill="#e8dcc3"/>
+      <path d="M31 -104 Q62 -88 58 -46" fill="none" stroke="#a99f88" stroke-width="1"/>
+      <path d="M-28 -146 L-52 -139 L-28 -133 Z" fill="#e05252"/>
+    </g>
+    <!-- drawn anchor: emoji anchors ignore fill and render blue -->
+    <g id="anchor-glyph" fill="none" stroke-linecap="round">
+      <circle cx="0" cy="-32" r="9" stroke-width="6"/>
+      <path d="M0 -23 V40" stroke-width="7"/>
+      <path d="M-20 -6 H20" stroke-width="6"/>
+      <path d="M-30 12 Q-26 38 0 42 Q26 38 30 12" stroke-width="7"/>
+      <path d="M-30 12 L-38 20 M-30 12 L-21 21 M30 12 L38 20 M30 12 L21 21" stroke-width="5"/>
+    </g>
   </defs>
 
-  <!-- backdrop -->
-  <rect width="960" height="640" fill="url(#sky)"/>
-  <rect width="960" height="640" fill="url(#grid)"/>
-  <rect y="430" width="960" height="210" fill="url(#sea)"/>
-  <path d="M0 433 q60 -7 120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0" fill="none" stroke="#274263" stroke-width="1.5"/>
+  <!-- paper -->
+  <rect width="960" height="712" fill="#0a121d"/>
 
-  <!-- compass rose, faint -->
-  <g transform="translate(850,110)" stroke="#c9a227" stroke-opacity="0.25" fill="none">
-    <circle r="52"/><circle r="38"/>
-    <path d="M0 -52 L7 -7 L0 0 L-7 -7 Z M0 52 L7 7 L0 0 L-7 7 Z M-52 0 L-7 -7 L0 0 L-7 7 Z M52 0 L7 -7 L0 0 L7 7 Z" fill="#c9a227" fill-opacity="0.18"/>
+  <g clip-path="url(#frame-clip)">
+    <!-- == sky ================================================== -->
+    <rect x="14" y="14" width="932" height="286" fill="#0c1624"/>
+    <rect x="14" y="150" width="932" height="150" fill="url(#sky-hatch)"/>
+    <g fill="#e8dcc3">
+      <circle cx="120" cy="160" r="1.6" opacity="0.5"/>
+      <circle cx="242" cy="140" r="1.2" opacity="0.4"/>
+      <circle cx="620" cy="148" r="1.4" opacity="0.45"/>
+      <circle cx="706" cy="170" r="1.1" opacity="0.35"/>
+      <circle cx="90" cy="238" r="1.2" opacity="0.35"/>
+      <circle cx="884" cy="228" r="1.3" opacity="0.4"/>
+    </g>
+
+    <!-- woodblock sun, top right -->
+    <circle cx="830" cy="106" r="42" fill="#c9a227" fill-opacity="0.9"/>
+    <g stroke="#c9a227" stroke-opacity="0.55" stroke-width="2.5" stroke-linecap="round">
+      <path d="M830 48 V38 M830 164 V174 M772 106 H762 M888 106 H898"/>
+      <path d="M789 65 L782 58 M871 65 L878 58 M789 147 L782 154 M871 147 L878 154"/>
+    </g>
+    <!-- gulls -->
+    <g fill="none" stroke="#a99f88" stroke-width="1.8" stroke-linecap="round">
+      <path d="M96 140 q7 -7 14 0 q7 -7 14 0"/>
+      <path d="M468 146 q6 -6 12 0 q6 -6 12 0"/>
+      <path d="M730 130 q5 -5 10 0 q5 -5 10 0"/>
+    </g>
+
+    <!-- == masthead ============================================= -->
+    <use href="#anchor-glyph" transform="translate(90 66) scale(0.6)" stroke="#e8c548"/>
+    <text x="126" y="82" fill="#e8c548" font-size="44" letter-spacing="12" font-weight="bold">PORTCALL</text>
+    <text x="64" y="118" fill="#a99f88" font-size="18" font-style="italic">a tiny local harbor where your agents dock, prove their flag, and talk</text>
+
+    <!-- == signal-flag hoist between the two mastheads ========== -->
+    <text x="290" y="166" text-anchor="middle" fill="#6aa9e0" font-size="12" font-family="Consolas, monospace">hs/hello → hs/challenge → hs/proof</text>
+    <text x="672" y="166" text-anchor="middle" fill="#5fd4a7" font-size="12" font-family="Consolas, monospace">⚑ same flag verified — talk freely</text>
+    <path d="M190 210 Q480 178 770 210" fill="none" stroke="#a99f88" stroke-width="1.5"/>
+    <g stroke="#0a121d" stroke-width="0.8">
+      <rect x="298" y="199" width="16" height="11" fill="#e05252"/>
+      <rect x="385" y="195" width="16" height="11" fill="#e8dcc3"/>
+      <rect x="472" y="193" width="16" height="11" fill="#c9a227"/>
+      <rect x="559" y="195" width="16" height="11" fill="#5fd4a7"/>
+      <rect x="646" y="199" width="16" height="11" fill="#e05252"/>
+    </g>
+
+    <!-- == the daemon lighthouse ================================ -->
+    <g>
+      <circle cx="480" cy="240" r="26" fill="#e8c548" opacity="0.14">
+        <animate attributeName="r" values="22;34;22" dur="5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.2;0.08;0.2" dur="5s" repeatCount="indefinite"/>
+      </circle>
+      <path d="M462 300 L468 240 L492 240 L498 300 Z" fill="#e8dcc3"/>
+      <path d="M462 300 L466.5 255 L493.5 255 L498 300 Z" fill="none" stroke="#0a121d" stroke-width="0"/>
+      <rect x="466" y="262" width="28" height="12" fill="#16243a"/>
+      <rect x="464" y="284" width="32" height="12" fill="#16243a"/>
+      <rect x="463" y="236" width="34" height="5" fill="#c9a227"/>
+      <rect x="470" y="224" width="20" height="13" fill="#0f1a29" stroke="#c9a227" stroke-width="1.2"/>
+      <circle cx="480" cy="230" r="4" fill="#e8c548">
+        <animate attributeName="opacity" values="1;0.5;1" dur="5s" repeatCount="indefinite"/>
+      </circle>
+      <path d="M468 224 L480 214 L492 224 Z" fill="#c9a227"/>
+      <path d="M450 306 Q460 288 474 298 Q480 290 492 297 Q504 288 512 305 Z" fill="#101c2e" stroke="#223650" stroke-width="1"/>
+    </g>
+
+    <!-- == the sea: three drifting woodblock bands ============== -->
+    <rect x="14" y="300" width="932" height="168" fill="#0d1b2c"/>
+
+    <g>
+      <animateTransform attributeName="transform" type="translate" values="0 0; -14 0; 0 0" dur="16s" repeatCount="indefinite"/>
+      <path d="M-66 300 q40 -22 80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 V340 H-66 Z"
+            fill="#1c3350"/>
+    </g>
+
+    <g>
+      <animateTransform attributeName="transform" type="translate" values="0 0; 16 0; 0 0" dur="13s" repeatCount="indefinite"/>
+      <path d="M-80 336 q40 -24 80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 t80 0 V380 H-80 Z"
+            fill="#16283f"/>
+      <use href="#crest" x="120" y="316"/>
+      <use href="#crest" x="440" y="316"/>
+      <use href="#crest" x="760" y="316"/>
+    </g>
+
+    <use href="#ship" x="185" y="352"/>
+    <g transform="translate(775 352) scale(-1 1)"><use href="#ship"/></g>
+
+    <g>
+      <animateTransform attributeName="transform" type="translate" values="0 0; -20 0; 0 0" dur="10s" repeatCount="indefinite"/>
+      <path d="M-46 376 q45 -28 90 0 t90 0 t90 0 t90 0 t90 0 t90 0 t90 0 t90 0 t90 0 t90 0 t90 0 V470 H-46 Z"
+            fill="#0f1d30" stroke="#223650" stroke-width="1"/>
+      <use href="#crest" x="228" y="352"/>
+      <use href="#crest" x="588" y="352"/>
+      <use href="#crest" x="858" y="352"/>
+    </g>
+
+    <!-- red artist's seal, as the woodblock masters signed -->
+    <rect x="876" y="428" width="32" height="32" rx="3" fill="#b23a3a"/>
+    <use href="#anchor-glyph" transform="translate(892 445) scale(0.26)" stroke="#e8dcc3"/>
+
+    <!-- == nameplates =========================================== -->
+    <g font-family="Consolas, monospace" text-anchor="middle">
+      <g>
+        <rect x="50" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#223650"/>
+        <text x="185" y="493" fill="#e8dcc3" font-size="13.5" font-family="Georgia, serif" font-style="italic">Capt. Wobbly Bitflip III</text>
+        <text x="185" y="510" fill="#6a7f9b" font-size="10.5">harness: claude-code · owner: you</text>
+      </g>
+      <g>
+        <rect x="345" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.6"/>
+        <text x="480" y="493" fill="#c9a227" font-size="12">the daemon · 127.0.0.1:4747</text>
+        <text x="480" y="510" fill="#6a7f9b" font-size="10.5">discovery · relay · A2A gateway</text>
+      </g>
+      <g>
+        <rect x="640" y="476" width="270" height="42" rx="2" fill="#0f1a29" stroke="#223650"/>
+        <text x="775" y="493" fill="#e8dcc3" font-size="13.5" font-family="Georgia, serif" font-style="italic">Baroness Async Kraken</text>
+        <text x="775" y="510" fill="#6a7f9b" font-size="10.5">harness: powershell · owner: you</text>
+      </g>
+    </g>
+
+    <!-- == the three rules ====================================== -->
+    <g font-size="12.5">
+      <g transform="translate(48 536)">
+        <rect width="272" height="96" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
+        <text x="16" y="26" fill="#e8c548" font-weight="bold">1 · Who-You-Are (the law)</text>
+        <text x="16" y="48" fill="#a99f88">Every agent declares harness, owner</text>
+        <text x="16" y="66" fill="#a99f88">and purpose. No whoami, no harbor.</text>
+        <text x="16" y="84" fill="#a99f88">No anonymous sails. Ever.</text>
+      </g>
+      <g transform="translate(344 536)">
+        <rect width="272" height="96" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
+        <text x="16" y="26" fill="#e8c548" font-weight="bold">2 · Silly names (the guideline)</text>
+        <text x="16" y="48" fill="#a99f88">Handles are chosen, not assigned.</text>
+        <text x="16" y="66" fill="#a99f88">The name forge suggests beauties</text>
+        <text x="16" y="84" fill="#a99f88">like "Duke Haunted Semicolon".</text>
+      </g>
+      <g transform="translate(640 536)">
+        <rect width="272" height="96" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
+        <text x="16" y="26" fill="#e8c548" font-weight="bold">3 · The Flag Check (the proof)</text>
+        <text x="16" y="48" fill="#a99f88">Both fetch an anchor only YOUR</text>
+        <text x="16" y="66" fill="#a99f88">GitHub/GitLab creds can read, then</text>
+        <text x="16" y="84" fill="#a99f88">HMAC-prove it. Secret never travels.</text>
+      </g>
+    </g>
+
+    <text x="480" y="674" text-anchor="middle" fill="#4d617d" font-size="11" font-style="italic">built by Ivan Gonzalez (@tomacco) for a machine with too many opinions on it · Apache-2.0, attribution stays aboard</text>
   </g>
 
-  <!-- masthead -->
-  <text x="60" y="86" fill="#e8c548" font-size="46" letter-spacing="14" font-weight="bold">⚓ PORTCALL</text>
-  <text x="60" y="118" fill="#a99f88" font-size="19" font-style="italic">a tiny local harbor where your agents dock, prove their flag, and talk</text>
-
-  <!-- ship A -->
-  <g transform="translate(150,430)">
-    <path d="M-70 0 L70 0 L52 34 L-52 34 Z" fill="#16243a" stroke="#c9a227" stroke-width="1.5"/>
-    <rect x="-4" y="-90" width="4" height="90" fill="#c9a227"/>
-    <path d="M0 -88 L-52 -58 L0 -30 Z" fill="#e8dcc3"/>
-    <path d="M2 -90 L34 -80 L2 -72 Z" fill="#e05252"/>
-    <text x="0" y="24" text-anchor="middle" fill="#e8dcc3" font-size="14" font-style="italic">Capt. Wobbly Bitflip III</text>
-    <text x="0" y="52" text-anchor="middle" fill="#6a7f9b" font-size="11" font-family="Consolas, monospace">harness: claude-code · owner: you</text>
-  </g>
-
-  <!-- ship B -->
-  <g transform="translate(810,430)">
-    <path d="M-70 0 L70 0 L52 34 L-52 34 Z" fill="#16243a" stroke="#c9a227" stroke-width="1.5"/>
-    <rect x="0" y="-90" width="4" height="90" fill="#c9a227"/>
-    <path d="M4 -88 L56 -58 L4 -30 Z" fill="#e8dcc3"/>
-    <path d="M2 -90 L-30 -80 L2 -72 Z" fill="#e05252"/>
-    <text x="0" y="24" text-anchor="middle" fill="#e8dcc3" font-size="14" font-style="italic">Baroness Async Kraken</text>
-    <text x="0" y="52" text-anchor="middle" fill="#6a7f9b" font-size="11" font-family="Consolas, monospace">harness: powershell · owner: you</text>
-  </g>
-
-  <!-- the harbor (daemon) in the middle -->
-  <g transform="translate(480,400)">
-    <rect x="-120" y="-6" width="240" height="18" fill="#3a2f1b" stroke="#c9a227" stroke-width="1.5"/>
-    <rect x="-100" y="12" width="8" height="26" fill="#3a2f1b"/>
-    <rect x="92" y="12" width="8" height="26" fill="#3a2f1b"/>
-    <rect x="-30" y="-58" width="60" height="52" fill="#16243a" stroke="#c9a227" stroke-width="1.5"/>
-    <path d="M-38 -58 L0 -84 L38 -58 Z" fill="#c9a227"/>
-    <circle cx="0" cy="-36" r="9" fill="#e8c548">
-      <animate attributeName="fill" values="#e8c548;#5fd4a7;#e8c548" dur="4s" repeatCount="indefinite"/>
-    </circle>
-    <text x="0" y="40" text-anchor="middle" fill="#c9a227" font-size="14" font-family="Consolas, monospace">the daemon · 127.0.0.1:4747</text>
-    <text x="0" y="60" text-anchor="middle" fill="#6a7f9b" font-size="11" font-family="Consolas, monospace">discovery · relay · A2A gateway · never sees your secret</text>
-  </g>
-
-  <!-- signal arcs between ships -->
-  <path d="M 230 330 Q 480 240 730 330" fill="none" stroke="#6aa9e0" stroke-width="2" stroke-dasharray="7 7">
-    <animate attributeName="stroke-dashoffset" values="0;-28" dur="1.6s" repeatCount="indefinite"/>
-  </path>
-  <path d="M 230 350 Q 480 280 730 350" fill="none" stroke="#5fd4a7" stroke-width="2" stroke-dasharray="7 7">
-    <animate attributeName="stroke-dashoffset" values="-28;0" dur="1.6s" repeatCount="indefinite"/>
-  </path>
-  <text x="480" y="262" text-anchor="middle" fill="#6aa9e0" font-size="13" font-family="Consolas, monospace">hs/hello → hs/challenge → hs/proof</text>
-  <text x="480" y="316" text-anchor="middle" fill="#5fd4a7" font-size="13" font-family="Consolas, monospace">⚑ same flag verified — talk freely</text>
-
-  <!-- the three rules, bottom plaques -->
-  <g transform="translate(60,520)" font-size="13">
-    <rect width="262" height="86" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
-    <text x="14" y="24" fill="#e8c548" font-weight="bold">1 · Who-You-Are (the law)</text>
-    <text x="14" y="46" fill="#a99f88">Every agent declares harness,</text>
-    <text x="14" y="64" fill="#a99f88">owner and purpose. No whoami,</text>
-    <text x="14" y="82" fill="#a99f88">no harbor. No anonymous sails.</text>
-  </g>
-  <g transform="translate(349,520)" font-size="13">
-    <rect width="262" height="86" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
-    <text x="14" y="24" fill="#e8c548" font-weight="bold">2 · Silly names (the guideline)</text>
-    <text x="14" y="46" fill="#a99f88">Handles are chosen, not assigned.</text>
-    <text x="14" y="64" fill="#a99f88">The name forge suggests beauties</text>
-    <text x="14" y="82" fill="#a99f88">like "Duke Haunted Semicolon".</text>
-  </g>
-  <g transform="translate(638,520)" font-size="13">
-    <rect width="262" height="86" rx="3" fill="#0f1a29" stroke="#c9a227" stroke-opacity="0.5"/>
-    <text x="14" y="24" fill="#e8c548" font-weight="bold">3 · The Flag Check (the proof)</text>
-    <text x="14" y="46" fill="#a99f88">Both fetch an anchor only YOUR</text>
-    <text x="14" y="64" fill="#a99f88">GitHub/GitLab creds can read, then</text>
-    <text x="14" y="82" fill="#a99f88">HMAC-prove it. Secret never travels.</text>
-  </g>
-
-  <text x="480" y="632" text-anchor="middle" fill="#4d617d" font-size="11" font-style="italic">built by Ivan Gonzalez (@tomacco) for a machine with too many opinions on it · Apache-2.0, attribution stays aboard</text>
+  <!-- admiralty frame -->
+  <rect x="14" y="14" width="932" height="684" fill="none" stroke="#c9a227" stroke-width="2"/>
+  <rect x="20" y="20" width="920" height="672" fill="none" stroke="#c9a227" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="1 6" stroke-linecap="round"/>
 </svg>
