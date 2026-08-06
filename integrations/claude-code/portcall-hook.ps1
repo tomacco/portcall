@@ -50,9 +50,31 @@ try {
         Get-Content $stateFile -Raw | ConvertFrom-Json
     }
 
+    # Keep this session "online" between prompts: one detached keepalive loop
+    # per state file. It exits by itself when SessionEnd removes the state
+    # file, the daemon disowns the identity, or the tethered session process
+    # dies (hooks are spawned by the Claude Code process, so our parent pid is
+    # the session's lifeline — a crash without SessionEnd must not leave a
+    # permanently-online ghost). Requires pwsh: the loop uses PS7 syntax, so a
+    # powershell.exe 5.1 fallback would just die at parse on every prompt.
+    function Confirm-Keepalive {
+        $keepalive = Join-Path $base 'portcall-keepalive.ps1'
+        if (-not (Test-Path $keepalive)) { return }
+        if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { return }
+        $procs = Get-CimInstance Win32_Process -Filter "Name like 'pwsh%'" -ErrorAction SilentlyContinue
+        $running = $procs | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($stateFile) -and $_.CommandLine.Contains('portcall-keepalive') }
+        if ($running) { return }
+        $parentPid = ($procs | Where-Object { $_.ProcessId -eq $PID }).ParentProcessId ?? 0
+        Start-Process pwsh -WindowStyle Hidden -ArgumentList @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $keepalive,
+            '-StateFile', $stateFile, '-TetherPid', $parentPid
+        ) | Out-Null
+    }
+
     switch ($Event) {
         'SessionStart' {
             $st = Register-Session
+            Confirm-Keepalive
             Out-Hook @{ systemMessage = "$([char]0x2693) PortCall: aboard as `"$($st.handle)`""; suppressOutput = $true }
         }
         'UserPromptSubmit' {
@@ -67,6 +89,7 @@ try {
                 if ($code -eq 401 -or $code -eq 404) { $st = Register-Session }
                 else { throw }  # unreachable/busy: keep identity; outer catch stays quiet
             }
+            Confirm-Keepalive
             $envelopes = (Invoke-Api -Path "/api/v1/agents/$($st.id)/inbox" -Token $st.token).envelopes
             $ctx = @()
             if (-not $st.announced) {
