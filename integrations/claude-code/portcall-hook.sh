@@ -31,7 +31,8 @@ api_status() { # method path token -> HTTP status code ("000" if unreachable)
   local m="$1" p="$2" t="${3:-}"
   local args=(-s -o /dev/null -w '%{http_code}' --max-time 3 -X "$m" -H 'content-type: application/json')
   [ -n "$t" ] && args+=(-H "authorization: Bearer $t")
-  curl "${args[@]}" "$DAEMON$p" 2>/dev/null || echo 000
+  # -w prints even when curl fails, so no fallback echo: it would double-print.
+  curl "${args[@]}" "$DAEMON$p" 2>/dev/null || true
 }
 
 register() {
