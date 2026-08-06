@@ -156,6 +156,7 @@ export function createServer({ identity = null as string | null }) {
             agents: roster.length,
             online: roster.filter((a) => a.online).length,
             publicChannels: registry.listChannels().length,
+            activeClaims: registry.listClaims().length,
             adapters: listAdapters(),
             providers: listProviders(),
           });
@@ -248,6 +249,24 @@ export function createServer({ identity = null as string | null }) {
             const viewerId = url.searchParams.get('agent') ?? undefined;
             if (viewerId) registry.auth(viewerId, bearer());
             return json(200, registry.publicView(agent, viewerId));
+          }
+        }
+
+        // --- claims: the harbor manifest ---
+        if (route[0] === 'claims') {
+          if (req.method === 'GET' && route.length === 1) {
+            return json(200, { claims: registry.listClaims(url.searchParams.get('touches') ?? undefined) });
+          }
+          if (req.method === 'POST' && route.length === 1) {
+            const body = await readBody();
+            const agent = registry.auth(body.from, bearer());
+            return json(201, registry.claim(agent, body.path, body.note, body.ttlSec));
+          }
+          if (req.method === 'DELETE' && route[1]) {
+            const body = await readBody();
+            const agent = registry.auth(body.from, bearer());
+            registry.releaseClaim(agent, route[1]);
+            return json(200, { ok: true });
           }
         }
 

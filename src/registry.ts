@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import type { ServerResponse } from 'node:http';
 import type { Bus } from './events.ts';
-import type { AgentRecord, ChannelRecord, ChannelVisibility, Envelope, PublicAgent, RegistrationRequest, Whoami } from './types.ts';
+import type { AgentRecord, ChannelRecord, ChannelVisibility, ClaimRecord, Envelope, PublicAgent, RegistrationRequest, Whoami } from './types.ts';
 
 const ONLINE_WINDOW_MS = 45_000;
 
@@ -31,6 +31,7 @@ export class Registry {
   private streams = new Map<string, Set<ServerResponse>>();
   private handshakes = new Map<string, HandshakeEntry>();
   private channels = new Map<string, ChannelRecord>();
+  private claims = new Map<string, ClaimRecord>();
   feed: Envelope[] = [];
   private bus: Bus;
 
@@ -117,6 +118,7 @@ export class Registry {
 
   private removeAgent(agent: AgentRecord, reason?: string): void {
     const id = agent.id;
+    this.releaseClaimsOf(id);
     const streams = this.streams.get(id);
     if (streams) {
       for (const response of streams) {
@@ -244,6 +246,64 @@ export class Registry {
     return this.feed.filter((envelope) => this.canObserveChannel(envelope.channelId, viewerId));
   }
 
+  // --- claims: soft, advisory "I am working on this" declarations ----------
+  // The manifest a session checks BEFORE touching a shared tree. Purely
+  // advisory (no enforcement), TTL-bounded, and released with the holder.
+
+  claim(agent: AgentRecord, path: unknown, note: unknown, ttlSec: unknown): ClaimRecord {
+    if (typeof path !== 'string' || !path.trim()) throw httpError(422, 'A claim needs a path.');
+    const cleanPath = normalizeClaimPath(path);
+    const cleanNote = typeof note === 'string' ? note.trim().slice(0, 500) : '';
+    const ttl = Math.min(Math.max(Number(ttlSec) || 4 * 3600, 60), 24 * 3600);
+    // Re-claiming your own path refreshes it instead of stacking duplicates.
+    const existing = [...this.claims.values()].find(
+      (c) => c.agentId === agent.id && c.path === cleanPath,
+    );
+    const record: ClaimRecord = {
+      id: existing?.id ?? 'cl_' + crypto.randomBytes(6).toString('hex'),
+      agentId: agent.id,
+      holder: { id: agent.id, handle: agent.handle, roleName: agent.role.name },
+      path: cleanPath,
+      note: cleanNote,
+      createdAt: existing?.createdAt ?? Date.now(),
+      expiresAt: Date.now() + ttl * 1000,
+    };
+    this.claims.set(record.id, record);
+    this.bus.emit(existing ? 'claim:refreshed' : 'claim:created', record);
+    return record;
+  }
+
+  releaseClaim(agent: AgentRecord, claimId: string): void {
+    const record = this.claims.get(claimId);
+    if (!record) throw httpError(404, `No such claim: ${claimId}`);
+    if (record.agentId !== agent.id) throw httpError(403, 'Only the holder can release a claim.');
+    this.claims.delete(claimId);
+    this.bus.emit('claim:released', { id: claimId, path: record.path, holder: record.holder });
+  }
+
+  /** Active claims, optionally narrowed to those overlapping a path. */
+  listClaims(touches?: string): ClaimRecord[] {
+    const now = Date.now();
+    for (const [id, record] of this.claims) {
+      if (record.expiresAt <= now) {
+        this.claims.delete(id);
+        this.bus.emit('claim:expired', { id, path: record.path, holder: record.holder });
+      }
+    }
+    const all = [...this.claims.values()];
+    if (!touches) return all;
+    const probe = normalizeClaimPath(touches);
+    return all.filter((c) => overlaps(c.path, probe));
+  }
+
+  private releaseClaimsOf(agentId: string): void {
+    for (const [id, record] of this.claims) {
+      if (record.agentId !== agentId) continue;
+      this.claims.delete(id);
+      this.bus.emit('claim:released', { id, path: record.path, holder: record.holder, reason: 'holder-left' });
+    }
+  }
+
   // --- messaging (adapters call these) ---
 
   recordEnvelope(envelope: Envelope): void {
@@ -336,4 +396,19 @@ export function httpError(status: number, message: string): Error & { status: nu
   const err = new Error(message) as Error & { status: number };
   err.status = status;
   return err;
+}
+
+// Claims cross the Windows/WSL divide, so compare paths case-insensitively
+// with forward slashes, no trailing slash, and /mnt/<drive>/ folded onto
+// <drive>:/ (the same tree seen from both sides on a WSL machine).
+export function normalizeClaimPath(p: string): string {
+  return p.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    .replace(/^\/mnt\/([a-z])(\/|$)/, '$1:$2');
+}
+
+/** Two normalized paths overlap when one is a prefix of the other at a segment boundary. */
+export function overlaps(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return long.startsWith(short) && (short.endsWith('/') || long[short.length] === '/');
 }

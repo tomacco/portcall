@@ -22,6 +22,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:channels
       - run: npm run test:eviction
+      - run: npm run test:claims
       - run: npm run test:handshake
       - name: Bash installer and hook lifecycle
         if: runner.os == 'Linux'
@@ -30,6 +31,7 @@ jobs:
           bash tests/test-claude-hook.sh
           bash tests/test-claude-hook-heartbeat.sh
           bash tests/test-claude-ensure-daemon.sh
+          bash tests/test-claude-claims-hook.sh
       - name: PowerShell installer and module parse
         if: runner.os == 'Windows'
         shell: pwsh
