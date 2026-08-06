@@ -27,13 +27,13 @@ jq -n --arg d "$URL" --arg r "$REPO_ROOT" '{daemonUrl: $d, owner: "test@example.
 # Dark harbor -> the hook starts the daemon and waits until it answers.
 bash "$HOME/.claude/portcall/portcall-ensure-daemon.sh"
 curl -sf "$URL/api/v1/status" >/dev/null || { echo 'FAIL: daemon not up after ensure' >&2; exit 1; }
-UPTIME1="$(curl -sf "$URL/api/v1/status" | jq .uptimeSec)"
+PID1="$(lsof -t -i ":$PORT" 2>/dev/null | head -1)"
+[ -n "$PID1" ] || { echo 'FAIL: no pid listening after ensure' >&2; exit 1; }
 
-# Lit harbor -> no-op: same daemon keeps running (uptime does not reset).
-sleep 1.2
+# Lit harbor -> no-op: the SAME process keeps serving (pid unchanged).
 bash "$HOME/.claude/portcall/portcall-ensure-daemon.sh"
-UPTIME2="$(curl -sf "$URL/api/v1/status" | jq .uptimeSec)"
-[ "$UPTIME2" -ge "$UPTIME1" ] || { echo 'FAIL: ensure restarted a healthy daemon' >&2; exit 1; }
+PID2="$(lsof -t -i ":$PORT" 2>/dev/null | head -1)"
+[ "$PID2" = "$PID1" ] || { echo 'FAIL: ensure replaced a healthy daemon' >&2; exit 1; }
 
 # Missing repo config -> quiet no-op, exit 0, nothing launched.
 PORT2=4880

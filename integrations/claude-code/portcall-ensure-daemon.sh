@@ -45,8 +45,10 @@ case "$PORT" in *[!0-9]*|'') PORT=4747 ;; esac
 # then wait (capped) until it answers so the registration hook that follows
 # finds the harbor open.
 ( cd "$REPO" && PORTCALL_PORT="$PORT" setsid nohup node src/daemon.ts >>"$LOG" 2>&1 </dev/null & ) >/dev/null 2>&1
+# --max-time is per-attempt; --retry-max-time caps the whole wait so the
+# script honors its own budget even against a blackholed non-local URL.
 command -v curl >/dev/null 2>&1 && \
   curl -sf --retry 10 --retry-delay 1 --retry-connrefused --max-time 12 \
-    "$URL/api/v1/status" -o /dev/null 2>&1
+    --retry-max-time 12 "$URL/api/v1/status" -o /dev/null 2>&1
 
 exit 0
