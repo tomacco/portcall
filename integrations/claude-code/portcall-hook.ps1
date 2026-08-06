@@ -51,17 +51,23 @@ try {
     }
 
     # Keep this session "online" between prompts: one detached keepalive loop
-    # per state file. It exits by itself when SessionEnd removes the state file
-    # or the daemon disowns the identity; we respawn after any re-register.
+    # per state file. It exits by itself when SessionEnd removes the state
+    # file, the daemon disowns the identity, or the tethered session process
+    # dies (hooks are spawned by the Claude Code process, so our parent pid is
+    # the session's lifeline — a crash without SessionEnd must not leave a
+    # permanently-online ghost). Requires pwsh: the loop uses PS7 syntax, so a
+    # powershell.exe 5.1 fallback would just die at parse on every prompt.
     function Confirm-Keepalive {
         $keepalive = Join-Path $base 'portcall-keepalive.ps1'
         if (-not (Test-Path $keepalive)) { return }
-        $running = Get-CimInstance Win32_Process -Filter "Name like 'pwsh%' or Name like 'powershell%'" -ErrorAction SilentlyContinue |
-            Where-Object { $_.CommandLine -and $_.CommandLine.Contains($stateFile) -and $_.CommandLine.Contains('portcall-keepalive') }
+        if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { return }
+        $procs = Get-CimInstance Win32_Process -Filter "Name like 'pwsh%'" -ErrorAction SilentlyContinue
+        $running = $procs | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($stateFile) -and $_.CommandLine.Contains('portcall-keepalive') }
         if ($running) { return }
-        $exe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
-        Start-Process $exe -WindowStyle Hidden -ArgumentList @(
-            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $keepalive, '-StateFile', $stateFile
+        $parentPid = ($procs | Where-Object { $_.ProcessId -eq $PID }).ParentProcessId ?? 0
+        Start-Process pwsh -WindowStyle Hidden -ArgumentList @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $keepalive,
+            '-StateFile', $stateFile, '-TetherPid', $parentPid
         ) | Out-Null
     }
 

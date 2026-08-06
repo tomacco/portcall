@@ -11,9 +11,11 @@
 # This loop NEVER registers: identity is minted only by the hook.
 param(
     [Parameter(Mandatory)][string]$StateFile,
-    [int]$IntervalSec = 20
+    [int]$IntervalSec = 20,
+    [int]$TetherPid = 0
 )
 $ErrorActionPreference = 'Stop'
+if ($IntervalSec -lt 1) { $IntervalSec = 20 }
 
 $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
 $cfgFile = Join-Path $homeDir '.claude/portcall/config.json'
@@ -25,6 +27,8 @@ $daemon = $daemon.TrimEnd('/')
 
 while ($true) {
     if (-not (Test-Path $StateFile)) { exit 0 }
+    # Session crashed without SessionEnd? No ghost presence.
+    if ($TetherPid -gt 0 -and -not (Get-Process -Id $TetherPid -ErrorAction SilentlyContinue)) { exit 0 }
     $st = try { Get-Content $StateFile -Raw | ConvertFrom-Json } catch { $null }
     if ($st -and $st.id -and $st.token) {
         try {

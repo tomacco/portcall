@@ -74,4 +74,18 @@ COUNT="$(pgrep -fc "portcall-keepalive.sh $STATE" || echo 0)"
 rm -f "$STATE"
 wait_gone "portcall-keepalive.sh $STATE" || { echo 'FAIL: hook-spawned keepalive leaked' >&2; exit 1; }
 
+# 4. Dead tether: a crashed session (state file never removed) must not leave
+#    a permanently-online ghost - the loop exits when its tether pid dies.
+STATE="$TMP/.claude/portcall/state/tethered.json"
+printf '{"id":"ag_x","token":"tok_x","handle":"X","announced":true}' > "$STATE"
+sleep 3 &
+TETHER_PID=$!
+PORTCALL_URL="http://127.0.0.1:$PORT" bash "$KEEPALIVE" "$STATE" 0.3 "$TETHER_PID" &
+sleep 1
+pgrep -f "portcall-keepalive.sh $STATE" >/dev/null || { echo 'FAIL: tethered keepalive not running' >&2; exit 1; }
+kill "$TETHER_PID" 2>/dev/null || true
+wait "$TETHER_PID" 2>/dev/null || true
+wait_gone "portcall-keepalive.sh $STATE" || { echo 'FAIL: keepalive outlived its dead tether' >&2; exit 1; }
+[ -f "$STATE" ] || { echo 'FAIL: tether test should not touch the state file' >&2; exit 1; }
+
 echo 'PASS: keepalive heartbeats between prompts, exits with its session, never duplicates'

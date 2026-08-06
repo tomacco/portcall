@@ -38,3 +38,5 @@ jobs:
           ./tests/test-claude-install.ps1
           ./tests/test-claude-hook.ps1
           [void][scriptblock]::Create((Get-Content clients/powershell/PortCall.psm1 -Raw))
+          [void][scriptblock]::Create((Get-Content integrations/claude-code/portcall-hook.ps1 -Raw))
+          [void][scriptblock]::Create((Get-Content integrations/claude-code/portcall-keepalive.ps1 -Raw))
