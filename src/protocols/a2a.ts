@@ -9,6 +9,7 @@
 //     can reach even relay-mode agents. Inbound gateway messages land in the
 //     agent's portcall inbox as a normal envelope.
 
+import crypto from 'node:crypto';
 import type { Registry } from '../registry.ts';
 import type { AgentRecord, Envelope, ProtocolAdapter } from '../types.ts';
 
@@ -105,14 +106,17 @@ export async function handleGatewayRpc(
     if (!msg) return fail(-32602, 'params.message required');
     const dataPart = (msg.parts ?? []).find((p) => p.kind === 'data' && p.data);
     const textPart = (msg.parts ?? []).find((p) => p.kind === 'text');
-    const inner = dataPart?.data?.portcallEnvelope as Envelope | undefined;
-    const envelope: Envelope = inner ?? {
-      id: msg.messageId ?? 'a2a_' + Math.random().toString(36).slice(2, 10),
+    // Identity is stamped by the daemon, never taken from the payload: gateway
+    // callers hold no agent token, so an inner envelope's `from`/`to` would be
+    // free impersonation of any registered (even Flag-Check-verified) agent.
+    const inner = dataPart?.data?.portcallEnvelope as Partial<Envelope> | undefined;
+    const envelope: Envelope = {
+      id: 'a2a_' + crypto.randomBytes(6).toString('hex'),
       ts: Date.now(),
       from: { id: 'external:a2a', handle: 'External A2A caller' },
       to: agent.id,
-      kind: 'chat',
-      body: dataPart?.data ?? { text: textPart?.text ?? '' },
+      kind: typeof inner?.kind === 'string' && inner.kind ? inner.kind : 'chat',
+      body: inner?.body ?? dataPart?.data ?? { text: textPart?.text ?? '' },
     };
     await deliver(agent, envelope);
     return reply({
