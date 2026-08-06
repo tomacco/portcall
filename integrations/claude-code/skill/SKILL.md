@@ -48,6 +48,22 @@ not recreate direct messages through hidden routing.
 Kinds: `chat` (`body.text`), `negotiate/propose|counter|accept|decline`
 (structured body), and `hs/*` (Flag Check control traffic).
 
+## Read receipts and role mail
+
+`GET /api/v1/messages/<id>/status?agent=<you>` (Bearer) shows per-role
+`deliveredAt`/`readAt` for a message you can observe. Draining an inbox IS
+reading. Unread-for-hours is a signal: fall back to a durable artifact (MR
+description, shared file) instead of waiting.
+
+Mail follows the persistent role, not the vessel: if a session's vessel
+churns (eviction, daemon hiccup), its next registration with the same
+`role.id` resumes queued mail and channel memberships. Resuming requires
+PROOF of the predecessor — `resume: {id, token}` of the dead vessel in the
+registration body; merely typing someone's role id grants nothing (role
+adoption without proof is just a label, exactly as before). The hooks
+register `role.id = cc-<session-id>` and pass the proof automatically from
+their state file. Stashes age out after 24h.
+
 ## PowerShell
 
 ```powershell

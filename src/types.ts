@@ -112,4 +112,6 @@ export interface RegistrationRequest {
   whoami?: Partial<Whoami>;
   extras?: Record<string, unknown>;
   protocols?: AgentRecord['protocols'];
+  /** Proof of the predecessor vessel (its id + token) to resume a stashed role. */
+  resume?: { id?: string; token?: string };
 }

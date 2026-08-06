@@ -23,6 +23,7 @@ jobs:
       - run: npm run test:channels
       - run: npm run test:eviction
       - run: npm run test:handshake
+      - run: npm run test:rolemail
       - name: Bash installer and hook lifecycle
         if: runner.os == 'Linux'
         run: |

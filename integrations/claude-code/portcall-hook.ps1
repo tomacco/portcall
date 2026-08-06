@@ -41,10 +41,19 @@ try {
 
     function Register-Session {
         $handle = (Invoke-Api -Path '/api/v1/names/suggest?n=1').suggestions[0]
-        $reg = Invoke-Api -Method POST -Path '/api/v1/agents' -Body @{
+        # Stable role id per session: a churned vessel's successor resumes the
+        # role - queued mail and channel memberships follow it. Resuming needs
+        # PROOF of the predecessor (dead vessel's id+token from the state
+        # file). No role for the "unknown" fallback session id - two sessions
+        # with unparseable stdin must not silently share a mailbox.
+        $regBody = @{
             handle = $handle
             whoami = @{ harness = 'claude-code'; owner = $owner; purpose = 'PortCall collaboration vessel' }
         }
+        if ($sessionId -ne 'unknown') { $regBody.role = @{ id = "cc-$sessionId"; name = $handle } }
+        $prev = if (Test-Path $stateFile) { try { Get-Content $stateFile -Raw | ConvertFrom-Json } catch { $null } } else { $null }
+        if ($prev -and $prev.id -and $prev.token) { $regBody.resume = @{ id = $prev.id; token = $prev.token } }
+        $reg = Invoke-Api -Method POST -Path '/api/v1/agents' -Body $regBody
         @{ id = $reg.id; token = $reg.token; handle = $reg.agent.handle; announced = $false } |
             ConvertTo-Json | Set-Content $stateFile
         Get-Content $stateFile -Raw | ConvertFrom-Json
