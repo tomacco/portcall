@@ -64,5 +64,21 @@ registry.get(watcher.id)!.lastSeen = Date.now() - DAY_AND_HOUR;
 evicted = registry.evictStale();
 assert.deepEqual(evicted, [], 'stream-attached agent survives silence');
 assert.ok(registry.get(watcher.id), 'watcher still aboard');
+// Destroy the sink so attachStream's ping interval is cleared and node can exit.
+sink.destroy();
+
+// -- evicting the last member deletes the channel ----------------------------
+const loner = registry.register({ handle: 'Loner', whoami });
+const solo = registry.createChannel(registry.get(loner.id)!, 'solo topic', 'public');
+registry.get(loner.id)!.lastSeen = Date.now() - DAY_AND_HOUR;
+registry.evictStale();
+assert.throws(() => registry.channel(solo.id), /No such channel/, 'empty channel deleted');
+
+// -- a voluntary leave still emits agent:left WITHOUT a reason ---------------
+const guest = registry.register({ handle: 'Guest', whoami });
+registry.leave(guest.id, guest.token);
+const voluntary = events.filter((e) => e.type === 'agent:left').at(-1);
+assert.equal(voluntary!.data.id, guest.id);
+assert.ok(!('reason' in voluntary!.data), 'voluntary leave carries no reason');
 
 console.log('PASS: stale ghosts evicted with full cleanup; live and attached agents untouched');
