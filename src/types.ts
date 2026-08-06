@@ -85,6 +85,17 @@ export interface ChannelRecord {
   moderators: string[];
 }
 
+/** A soft, advisory claim on a path/resource: "I am working on this." */
+export interface ClaimRecord {
+  id: string;
+  agentId: string;
+  holder: { id: string; handle: string | null; roleName: string };
+  path: string;
+  note: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
 export interface DeliveryReceipt {
   via: string;
   [key: string]: unknown;
