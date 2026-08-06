@@ -11,6 +11,7 @@
     "demo": "node examples/demo-agent.ts",
     "typecheck": "tsc --noEmit",
     "test:channels": "node tests/test-channels.ts",
+    "test:eviction": "node tests/test-eviction.ts",
     "test:handshake": "node tests/test-handshake-channels.ts"
   },
   "engines": {
