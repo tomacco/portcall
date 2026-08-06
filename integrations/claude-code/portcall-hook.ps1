@@ -50,9 +50,25 @@ try {
         Get-Content $stateFile -Raw | ConvertFrom-Json
     }
 
+    # Keep this session "online" between prompts: one detached keepalive loop
+    # per state file. It exits by itself when SessionEnd removes the state file
+    # or the daemon disowns the identity; we respawn after any re-register.
+    function Confirm-Keepalive {
+        $keepalive = Join-Path $base 'portcall-keepalive.ps1'
+        if (-not (Test-Path $keepalive)) { return }
+        $running = Get-CimInstance Win32_Process -Filter "Name like 'pwsh%' or Name like 'powershell%'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and $_.CommandLine.Contains($stateFile) -and $_.CommandLine.Contains('portcall-keepalive') }
+        if ($running) { return }
+        $exe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
+        Start-Process $exe -WindowStyle Hidden -ArgumentList @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $keepalive, '-StateFile', $stateFile
+        ) | Out-Null
+    }
+
     switch ($Event) {
         'SessionStart' {
             $st = Register-Session
+            Confirm-Keepalive
             Out-Hook @{ systemMessage = "$([char]0x2693) PortCall: aboard as `"$($st.handle)`""; suppressOutput = $true }
         }
         'UserPromptSubmit' {
@@ -67,6 +83,7 @@ try {
                 if ($code -eq 401 -or $code -eq 404) { $st = Register-Session }
                 else { throw }  # unreachable/busy: keep identity; outer catch stays quiet
             }
+            Confirm-Keepalive
             $envelopes = (Invoke-Api -Path "/api/v1/agents/$($st.id)/inbox" -Token $st.token).envelopes
             $ctx = @()
             if (-not $st.announced) {

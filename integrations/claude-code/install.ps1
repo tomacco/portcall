@@ -33,7 +33,7 @@ function Write-IfChanged([string]$Path, [string]$Content) {
 $base = Join-Path $claudeDir 'portcall'
 New-Item -ItemType Directory -Force $base, (Join-Path $base 'state') | Out-Null
 
-foreach ($f in 'portcall-hook.ps1', 'portcall-hook.sh') {
+foreach ($f in 'portcall-hook.ps1', 'portcall-hook.sh', 'portcall-keepalive.ps1', 'portcall-keepalive.sh') {
     Write-IfChanged (Join-Path $base $f) (Get-Content (Join-Path $here $f) -Raw) | Out-Null
 }
 Write-IfChanged (Join-Path $base 'PortCall.psm1') (Get-Content (Join-Path $repo 'clients/powershell/PortCall.psm1') -Raw) | Out-Null

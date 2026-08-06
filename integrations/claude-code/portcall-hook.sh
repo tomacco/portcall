@@ -45,9 +45,19 @@ register() {
   chmod 600 "$STATE"
 }
 
+# Keep this session "online" between prompts: one detached keepalive loop per
+# state file. It exits by itself when SessionEnd removes the state file or the
+# daemon disowns the identity; we respawn it here after any re-register.
+ensure_keepalive() {
+  [ -f "$BASE/portcall-keepalive.sh" ] || return 0
+  pgrep -f "portcall-keepalive.sh $STATE" >/dev/null 2>&1 && return 0
+  ( setsid nohup bash "$BASE/portcall-keepalive.sh" "$STATE" >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
+}
+
 case "$EVENT" in
   SessionStart)
     register || exit 0
+    ensure_keepalive
     jq -cn --arg m "⚓ PortCall: aboard as \"$(jq -r .handle "$STATE")\"" \
       '{systemMessage: $m, suppressOutput: true}'
     ;;
@@ -67,6 +77,7 @@ case "$EVENT" in
         ;;
       *) exit 0 ;;  # daemon unreachable/busy: keep identity, try next prompt
     esac
+    ensure_keepalive
     INBOX="$(api GET "/api/v1/agents/$ID/inbox" "$TOKEN" 2>/dev/null | jq '.envelopes // []')" || INBOX='[]'
     CTX=""
     if [ "$(jq -r .announced "$STATE")" != "true" ]; then
