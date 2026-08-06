@@ -29,6 +29,7 @@ jobs:
           bash tests/test-claude-install.sh
           bash tests/test-claude-hook.sh
           bash tests/test-claude-hook-heartbeat.sh
+          bash tests/test-claude-ensure-daemon.sh
       - name: PowerShell installer and module parse
         if: runner.os == 'Windows'
         shell: pwsh

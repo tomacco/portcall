@@ -35,6 +35,12 @@ for event in SessionStart UserPromptSubmit SessionEnd; do
   count="$("$REAL_JQ" --arg event "$event" '[.hooks[$event][].hooks[] | select(.args[-1] == $event)] | length' "$HOME/.claude/settings.json")"
   [[ "$count" == 1 ]] || fail "$event hook count is $count"
 done
+# Autostart is wired exactly once, first in SessionStart, and the config knows the repo.
+ensure_count="$("$REAL_JQ" '[.hooks.SessionStart[].hooks[] | select(.args[0] | endswith("portcall-ensure-daemon.sh"))] | length' "$HOME/.claude/settings.json")"
+[[ "$ensure_count" == 1 ]] || fail "autostart hook count is $ensure_count"
+"$REAL_JQ" -e '.hooks.SessionStart[0].hooks[0].args[0] | endswith("portcall-ensure-daemon.sh")' "$HOME/.claude/settings.json" >/dev/null \
+  || fail 'autostart is not first in SessionStart'
+"$REAL_JQ" -e '.repo | length > 0' "$HOME/.claude/portcall/config.json" >/dev/null || fail 'config.json lacks repo'
 first_settings="$(sha "$HOME/.claude/settings.json")"
 first_hook="$(sha "$HOME/.claude/portcall/portcall-hook.sh")"
 run_installer
