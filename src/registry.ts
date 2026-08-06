@@ -34,8 +34,20 @@ export class Registry {
   // Per-envelope, per-recipient delivery state: the sender's closed loop.
   private deliveries = new Map<string, Record<string, { deliveredAt: number; readAt?: number }>>();
   // Mail and memberships of departed vessels, keyed by persistent role id,
-  // waiting for the role's next vessel. Bounded; oldest stash drops first.
-  private orphanedRoles = new Map<string, { stashedAt: number; inbox: Envelope[]; channels: string[]; moderatorOf: string[] }>();
+  // waiting for the role's next vessel. Resuming requires PROOF of the
+  // predecessor (its vessel id + token): role ids are public, unauthenticated
+  // strings, and a stash carries private-channel membership and moderator
+  // seats — handing that to whoever types the same string first would turn a
+  // spoofable label into the only enforced authorization boundary's bypass.
+  // Bounded; least-recently-stashed drops first; stashes age out after 24h.
+  private orphanedRoles = new Map<string, {
+    stashedAt: number;
+    prevVesselId: string;
+    tokenHash: string;
+    inbox: Envelope[];
+    channels: string[];
+    moderatorOf: string[];
+  }>();
   feed: Envelope[] = [];
   private bus: Bus;
 
@@ -43,7 +55,7 @@ export class Registry {
     this.bus = bus;
   }
 
-  register({ handle, role, whoami, extras, protocols }: RegistrationRequest) {
+  register({ handle, role, whoami, extras, protocols, resume }: RegistrationRequest) {
     if (!whoami || typeof whoami !== 'object') {
       throw httpError(422, 'The Who-You-Are rule is mandatory: send a whoami object.');
     }
@@ -88,10 +100,19 @@ export class Registry {
     };
     this.agents.set(id, agent);
     this.inboxes.set(id, []);
-    // A returning role picks up where its last vessel left off: queued mail
-    // and channel memberships survive the churn.
+    // A returning role picks up where its last vessel left off - queued mail
+    // and channel memberships survive the churn - but ONLY with proof of the
+    // predecessor: the old vessel's id and token (the hook still holds them
+    // in its session state file when it re-registers after a 401).
     const stash = this.orphanedRoles.get(agent.role.id);
-    if (stash) {
+    if (stash && Date.now() - stash.stashedAt > 24 * 60 * 60 * 1000) {
+      this.orphanedRoles.delete(agent.role.id);
+    } else if (
+      stash &&
+      resume?.id === stash.prevVesselId &&
+      typeof resume?.token === 'string' &&
+      sha256(resume.token) === stash.tokenHash
+    ) {
       this.orphanedRoles.delete(agent.role.id);
       this.inboxes.get(id)!.push(...stash.inbox);
       for (const channelId of stash.channels) {
@@ -146,8 +167,11 @@ export class Registry {
       const inbox = this.inboxes.get(id) ?? [];
       const channels = [...this.channels.values()].filter((c) => c.members.includes(id));
       if (inbox.length || channels.length) {
+        this.orphanedRoles.delete(agent.role.id); // re-set = most recent
         this.orphanedRoles.set(agent.role.id, {
           stashedAt: Date.now(),
+          prevVesselId: id,
+          tokenHash: sha256(agent.token),
           inbox: inbox.slice(-200),
           channels: channels.map((c) => c.id),
           moderatorOf: channels.filter((c) => c.moderators.includes(id)).map((c) => c.id),
@@ -303,7 +327,7 @@ export class Registry {
     // delivery and read then cannot lose or misattribute the receipt.
     const roleId = this.agents.get(id)?.role.id ?? id;
     const status = this.deliveries.get(envelope.id) ?? {};
-    status[roleId] = { deliveredAt: Date.now() };
+    status[roleId] ??= { deliveredAt: Date.now() }; // never clobber an existing readAt
     this.deliveries.set(envelope.id, status);
     box.push(envelope);
     if (box.length > 200) box.shift();
@@ -401,6 +425,10 @@ export class Registry {
     }
     return [...out];
   }
+}
+
+function sha256(value: string): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
 }
 
 export function httpError(status: number, message: string): Error & { status: number } {

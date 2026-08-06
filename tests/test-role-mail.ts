@@ -21,12 +21,13 @@ async function request(path: string, init: RequestInit = {}, token?: string) {
   return { response, body: await response.json() };
 }
 
-async function register(handle: string, roleId?: string) {
+async function register(handle: string, roleId?: string, resume?: { id: string; token: string }) {
   const { body } = await request('/api/v1/agents', {
     method: 'POST',
     body: JSON.stringify({
       handle,
       ...(roleId ? { role: { id: roleId, name: handle } } : {}),
+      ...(resume ? { resume } : {}),
       whoami: { harness: 'test', owner: 'test', purpose: 'role mail test' },
     }),
   });
@@ -89,7 +90,23 @@ registry.get(worker.id)!.lastSeen = 0;
 registry.evictStale();
 assert.equal(registry.get(worker.id), undefined, 'old vessel gone');
 
-const worker2 = await register('Worker II', 'role-worker');
+// -- a hijacker typing the role id gets NOTHING: no proof, no resume ---------
+const hijacker = await register('Hijacker', 'role-worker');
+{
+  const { body } = await request(`/api/v1/agents/${hijacker.id}/inbox`, {}, hijacker.token);
+  assert.equal(body.envelopes.length, 0, 'no stashed mail without predecessor proof');
+  const { response } = await request(`/api/v1/channels/${channel.id}?agent=${hijacker.id}`, {}, hijacker.token);
+  assert.equal(response.status, 403, 'no private-channel membership without proof');
+}
+// wrong token is proof of nothing
+const impostor = await register('Impostor', 'role-worker', { id: worker.id, token: 'not-the-token' });
+{
+  const { body } = await request(`/api/v1/agents/${impostor.id}/inbox`, {}, impostor.token);
+  assert.equal(body.envelopes.length, 0, 'wrong token resumes nothing');
+}
+
+// -- the true successor proves possession of the dead vessel's credentials ---
+const worker2 = await register('Worker II', 'role-worker', { id: worker.id, token: worker.token });
 {
   const { body } = await request(`/api/v1/agents/${worker2.id}/inbox`, {}, worker2.token);
   const texts = body.envelopes.map((e: any) => e.body.text);

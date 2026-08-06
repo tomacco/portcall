@@ -36,13 +36,24 @@ api_status() { # method path token -> HTTP status code ("000" if unreachable)
 }
 
 register() {
-  local handle payload reg
+  local handle payload reg prev_id prev_token
   handle="$(api GET '/api/v1/names/suggest?n=1' | jq -r '.suggestions[0]')" || return 1
   # A stable role id per session: if this vessel churns (eviction, daemon
   # hiccup), the next registration resumes the role - queued mail and channel
-  # memberships follow it.
+  # memberships follow it. Resuming needs PROOF of the predecessor, so pass
+  # the dead vessel's id+token from our state file. Skip the role entirely
+  # for the "unknown" fallback session id - two sessions with unparseable
+  # stdin must not silently share a mailbox.
+  prev_id=""; prev_token=""
+  if [ -f "$STATE" ]; then
+    prev_id="$(jq -r '.id // empty' "$STATE" 2>/dev/null)"
+    prev_token="$(jq -r '.token // empty' "$STATE" 2>/dev/null)"
+  fi
   payload="$(jq -n --arg h "$handle" --arg o "$OWNER" --arg s "$SESSION_ID" \
-    '{handle:$h, role:{id:("cc-" + $s), name:$h}, whoami:{harness:"claude-code", owner:$o, purpose:"PortCall collaboration vessel"}}')"
+    --arg pi "$prev_id" --arg pt "$prev_token" \
+    '{handle:$h, whoami:{harness:"claude-code", owner:$o, purpose:"PortCall collaboration vessel"}}
+     + (if $s != "unknown" then {role:{id:("cc-" + $s), name:$h}} else {} end)
+     + (if $pi != "" and $pt != "" then {resume:{id:$pi, token:$pt}} else {} end)')"
   reg="$(api POST /api/v1/agents '' "$payload")" || return 1
   printf '%s' "$reg" | jq '{id, token, handle: .agent.handle, announced: false}' > "$STATE"
   chmod 600 "$STATE"
