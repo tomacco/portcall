@@ -57,8 +57,16 @@ try {
         }
         'UserPromptSubmit' {
             $st = if (Test-Path $stateFile) { Get-Content $stateFile -Raw | ConvertFrom-Json } else { Register-Session }
+            # Re-register ONLY when the daemon explicitly disowns this identity
+            # (401/404 after a restart or eviction). A timeout or 5xx is a busy
+            # daemon, not a lost identity — re-registering then would churn out
+            # a new id/token, orphan the old inbox, and break peers' saved ids.
             try { Invoke-Api -Method POST -Path "/api/v1/agents/$($st.id)/heartbeat" -Token $st.token | Out-Null }
-            catch { $st = Register-Session }  # daemon restarted since we joined
+            catch {
+                $code = [int]($_.Exception.Response.StatusCode ?? 0)
+                if ($code -eq 401 -or $code -eq 404) { $st = Register-Session }
+                else { throw }  # unreachable/busy: keep identity; outer catch stays quiet
+            }
             $envelopes = (Invoke-Api -Path "/api/v1/agents/$($st.id)/inbox" -Token $st.token).envelopes
             $ctx = @()
             if (-not $st.announced) {

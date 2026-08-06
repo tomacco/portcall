@@ -27,6 +27,13 @@ api() { # method path [token] [json-body]
   curl "${args[@]}" "$DAEMON$p"
 }
 
+api_status() { # method path token -> HTTP status code ("000" if unreachable)
+  local m="$1" p="$2" t="${3:-}"
+  local args=(-s -o /dev/null -w '%{http_code}' --max-time 3 -X "$m" -H 'content-type: application/json')
+  [ -n "$t" ] && args+=(-H "authorization: Bearer $t")
+  curl "${args[@]}" "$DAEMON$p" 2>/dev/null || echo 000
+}
+
 register() {
   local handle payload reg
   handle="$(api GET '/api/v1/names/suggest?n=1' | jq -r '.suggestions[0]')" || return 1
@@ -46,10 +53,19 @@ case "$EVENT" in
   UserPromptSubmit)
     { [ -f "$STATE" ] || register; } || exit 0
     ID="$(jq -r .id "$STATE")"; TOKEN="$(jq -r .token "$STATE")"
-    if ! api POST "/api/v1/agents/$ID/heartbeat" "$TOKEN" >/dev/null 2>&1; then
-      register || exit 0   # daemon restarted since we joined
-      ID="$(jq -r .id "$STATE")"; TOKEN="$(jq -r .token "$STATE")"
-    fi
+    # Re-register ONLY when the daemon explicitly disowns this identity
+    # (401/404 after a restart or eviction). A timeout or 5xx is a busy
+    # daemon, not a lost identity — re-registering then would churn out a
+    # new id/token, orphan the old inbox, and break peers' saved ids.
+    HB="$(api_status POST "/api/v1/agents/$ID/heartbeat" "$TOKEN")"
+    case "$HB" in
+      200) ;;
+      401|404)
+        register || exit 0
+        ID="$(jq -r .id "$STATE")"; TOKEN="$(jq -r .token "$STATE")"
+        ;;
+      *) exit 0 ;;  # daemon unreachable/busy: keep identity, try next prompt
+    esac
     INBOX="$(api GET "/api/v1/agents/$ID/inbox" "$TOKEN" 2>/dev/null | jq '.envelopes // []')" || INBOX='[]'
     CTX=""
     if [ "$(jq -r .announced "$STATE")" != "true" ]; then
