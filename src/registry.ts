@@ -252,13 +252,22 @@ export class Registry {
 
   claim(agent: AgentRecord, path: unknown, note: unknown, ttlSec: unknown): ClaimRecord {
     if (typeof path !== 'string' || !path.trim()) throw httpError(422, 'A claim needs a path.');
+    // Claims are rendered into other sessions' context: control characters
+    // would let a claim forge extra lines there, so they are banned in paths
+    // and flattened in notes. Never trust the renderer to do this.
+    if (/[\r\n\t\0]/.test(path)) throw httpError(422, 'Claim paths cannot contain control characters.');
     const cleanPath = normalizeClaimPath(path);
-    const cleanNote = typeof note === 'string' ? note.trim().slice(0, 500) : '';
-    const ttl = Math.min(Math.max(Number(ttlSec) || 4 * 3600, 60), 24 * 3600);
+    if (!cleanPath) throw httpError(422, 'A claim needs a non-root path.');
+    const cleanNote = typeof note === 'string'
+      ? note.replace(/[\r\n\t\0]+/g, ' ').trim().slice(0, 500) : '';
+    const requested = Number(ttlSec);
+    const ttl = Math.min(Math.max(Number.isFinite(requested) && requested > 0 ? requested : 4 * 3600, 60), 24 * 3600);
     // Re-claiming your own path refreshes it instead of stacking duplicates.
-    const existing = [...this.claims.values()].find(
-      (c) => c.agentId === agent.id && c.path === cleanPath,
-    );
+    const mine = [...this.claims.values()].filter((c) => c.agentId === agent.id);
+    const existing = mine.find((c) => c.path === cleanPath);
+    if (!existing && mine.length >= 32) {
+      throw httpError(429, 'Claim limit reached (32 per agent): release something first.');
+    }
     const record: ClaimRecord = {
       id: existing?.id ?? 'cl_' + crypto.randomBytes(6).toString('hex'),
       agentId: agent.id,
@@ -402,8 +411,10 @@ export function httpError(status: number, message: string): Error & { status: nu
 // with forward slashes, no trailing slash, and /mnt/<drive>/ folded onto
 // <drive>:/ (the same tree seen from both sides on a WSL machine).
 export function normalizeClaimPath(p: string): string {
-  return p.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
-    .replace(/^\/mnt\/([a-z])(\/|$)/, '$1:$2');
+  const unc = /^[\\/]{2}/.test(p.trim());
+  const flat = p.trim().replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/\/+$/, '')
+    .toLowerCase().replace(/^\/mnt\/([a-z])(\/|$)/, '$1:$2');
+  return unc ? '/' + flat : flat; // keep the UNC leading double slash
 }
 
 /** Two normalized paths overlap when one is a prefix of the other at a segment boundary. */
