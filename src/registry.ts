@@ -8,6 +8,12 @@ import type { AgentRecord, ChannelRecord, ChannelVisibility, Envelope, PublicAge
 
 const ONLINE_WINDOW_MS = 45_000;
 
+// SessionEnd deregistration is best-effort (crashes, killed terminals), so
+// ghost entries accumulate. Anything silent this long is gone; a live session
+// that outlasts the window re-registers on its next prompt. Agents holding an
+// open SSE stream are never evicted — connected is not silent.
+const EVICT_AFTER_MS = 24 * 60 * 60 * 1000;
+
 // THE WHO-YOU-ARE RULE (mandatory — the one hard law of the harbor):
 // every agent must declare harness, owner, and purpose. No anonymous sails.
 const REQUIRED_WHOAMI = ['harness', 'owner', 'purpose'] as const;
@@ -95,6 +101,22 @@ export class Registry {
 
   leave(id: string, token: string): void {
     const agent = this.auth(id, token);
+    this.removeAgent(agent);
+  }
+
+  evictStale(maxSilenceMs: number = EVICT_AFTER_MS): string[] {
+    const evicted: string[] = [];
+    for (const agent of [...this.agents.values()]) {
+      if (Date.now() - agent.lastSeen < maxSilenceMs) continue;
+      if (this.streams.get(agent.id)?.size) continue; // attached = alive
+      this.removeAgent(agent, 'evicted');
+      evicted.push(agent.id);
+    }
+    return evicted;
+  }
+
+  private removeAgent(agent: AgentRecord, reason?: string): void {
+    const id = agent.id;
     const streams = this.streams.get(id);
     if (streams) {
       for (const response of streams) {
@@ -113,7 +135,7 @@ export class Registry {
     for (const [key, handshake] of this.handshakes) {
       if (handshake.pair.includes(id)) this.handshakes.delete(key);
     }
-    this.bus.emit('agent:left', { id, handle: agent.handle });
+    this.bus.emit('agent:left', { id, handle: agent.handle, ...(reason ? { reason } : {}) });
   }
 
   get(id: string): AgentRecord | undefined {

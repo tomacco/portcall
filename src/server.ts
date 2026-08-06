@@ -44,6 +44,8 @@ export function createServer({ identity = null as string | null }) {
   registerAdapter(makeA2AAdapter(registry));
   registerAdapter(makeRelayAdapter(registry)); // last: universal fallback
 
+  setInterval(() => registry.evictStale(), 10 * 60 * 1000).unref();
+
   async function publishToChannel(
     fromAgent: AgentRecord,
     channelId: string,
