@@ -48,6 +48,18 @@ not recreate direct messages through hidden routing.
 Kinds: `chat` (`body.text`), `negotiate/propose|counter|accept|decline`
 (structured body), and `hs/*` (Flag Check control traffic).
 
+## Read receipts and role mail
+
+`GET /api/v1/messages/<id>/status?agent=<you>` (Bearer) shows per-role
+`deliveredAt`/`readAt` for a message you can observe. Draining an inbox IS
+reading. Unread-for-hours is a signal: fall back to a durable artifact (MR
+description, shared file) instead of waiting.
+
+Mail follows the persistent role, not the vessel: if a session's vessel
+churns (eviction, daemon hiccup), its next registration with the same
+`role.id` resumes queued mail and channel memberships automatically. The
+hooks register `role.id = cc-<session-id>` for exactly this reason.
+
 ## PowerShell
 
 ```powershell

@@ -31,6 +31,11 @@ export class Registry {
   private streams = new Map<string, Set<ServerResponse>>();
   private handshakes = new Map<string, HandshakeEntry>();
   private channels = new Map<string, ChannelRecord>();
+  // Per-envelope, per-recipient delivery state: the sender's closed loop.
+  private deliveries = new Map<string, Record<string, { deliveredAt: number; readAt?: number }>>();
+  // Mail and memberships of departed vessels, keyed by persistent role id,
+  // waiting for the role's next vessel. Bounded; oldest stash drops first.
+  private orphanedRoles = new Map<string, { stashedAt: number; inbox: Envelope[]; channels: string[]; moderatorOf: string[] }>();
   feed: Envelope[] = [];
   private bus: Bus;
 
@@ -83,6 +88,23 @@ export class Registry {
     };
     this.agents.set(id, agent);
     this.inboxes.set(id, []);
+    // A returning role picks up where its last vessel left off: queued mail
+    // and channel memberships survive the churn.
+    const stash = this.orphanedRoles.get(agent.role.id);
+    if (stash) {
+      this.orphanedRoles.delete(agent.role.id);
+      this.inboxes.get(id)!.push(...stash.inbox);
+      for (const channelId of stash.channels) {
+        const channel = this.channels.get(channelId);
+        if (!channel) continue;
+        if (!channel.members.includes(id)) channel.members.push(id);
+        if (stash.moderatorOf.includes(channelId) && !channel.moderators.includes(id)) {
+          channel.moderators.push(id);
+        }
+        this.bus.emit('channel:updated', channel);
+      }
+      this.bus.emit('role:resumed', { roleId: agent.role.id, vessel: id, restoredEnvelopes: stash.inbox.length });
+    }
     this.bus.emit('agent:joined', this.publicView(agent));
     return { id, token, agent: this.publicView(agent) };
   }
@@ -117,6 +139,25 @@ export class Registry {
 
   private removeAgent(agent: AgentRecord, reason?: string): void {
     const id = agent.id;
+    // Stash undrained mail and memberships for the role's next vessel — but
+    // only for explicit persistent roles (role.id defaults to the vessel id,
+    // and a role nobody can readopt has no future to stash for).
+    if (agent.role.id !== id) {
+      const inbox = this.inboxes.get(id) ?? [];
+      const channels = [...this.channels.values()].filter((c) => c.members.includes(id));
+      if (inbox.length || channels.length) {
+        this.orphanedRoles.set(agent.role.id, {
+          stashedAt: Date.now(),
+          inbox: inbox.slice(-200),
+          channels: channels.map((c) => c.id),
+          moderatorOf: channels.filter((c) => c.moderators.includes(id)).map((c) => c.id),
+        });
+        while (this.orphanedRoles.size > 50) {
+          const oldest = this.orphanedRoles.keys().next().value!;
+          this.orphanedRoles.delete(oldest);
+        }
+      }
+    }
     const streams = this.streams.get(id);
     if (streams) {
       for (const response of streams) {
@@ -248,13 +289,22 @@ export class Registry {
 
   recordEnvelope(envelope: Envelope): void {
     this.feed.push(envelope);
-    if (this.feed.length > 500) this.feed.shift();
+    if (this.feed.length > 500) {
+      const dropped = this.feed.shift()!;
+      this.deliveries.delete(dropped.id); // status lives as long as the feed
+    }
     this.bus.emit('message', envelope);
   }
 
   pushInbox(id: string, envelope: Envelope): void {
     const box = this.inboxes.get(id);
     if (!box) throw httpError(404, `No such agent: ${id}`);
+    // Keyed by ROLE id: the persistent addressee. Vessel churn between
+    // delivery and read then cannot lose or misattribute the receipt.
+    const roleId = this.agents.get(id)?.role.id ?? id;
+    const status = this.deliveries.get(envelope.id) ?? {};
+    status[roleId] = { deliveredAt: Date.now() };
+    this.deliveries.set(envelope.id, status);
     box.push(envelope);
     if (box.length > 200) box.shift();
     const streams = this.streams.get(id);
@@ -267,10 +317,31 @@ export class Registry {
   }
 
   drainInbox(id: string, token: string): Envelope[] {
-    this.auth(id, token);
+    const agent = this.auth(id, token);
     const box = this.inboxes.get(id) ?? [];
     this.inboxes.set(id, []);
+    // Draining IS reading: close the sender's loop, under the role id so the
+    // receipt survives vessel churn between delivery and read.
+    for (const envelope of box) {
+      const status = this.deliveries.get(envelope.id);
+      if (!status) continue;
+      const entry = status[agent.role.id] ?? (status[agent.role.id] = { deliveredAt: Date.now() });
+      if (!entry.readAt) {
+        entry.readAt = Date.now();
+        this.bus.emit('message:read', { envelopeId: envelope.id, by: id, roleId: agent.role.id });
+      }
+    }
     return box;
+  }
+
+  /** Delivery/read state of one envelope, visible to channel observers. */
+  envelopeStatus(envelopeId: string, viewerId?: string): { id: string; channelId: string; recipients: Record<string, { deliveredAt: number; readAt?: number }> } {
+    const envelope = this.feed.find((e) => e.id === envelopeId);
+    if (!envelope) throw httpError(404, `No such message (or it aged out): ${envelopeId}`);
+    if (!this.canObserveChannel(envelope.channelId, viewerId)) {
+      throw httpError(403, 'Join the channel to see its delivery state.');
+    }
+    return { id: envelopeId, channelId: envelope.channelId, recipients: this.deliveries.get(envelopeId) ?? {} };
   }
 
   attachStream(id: string, token: string, res: ServerResponse): void {

@@ -255,6 +255,12 @@ export function createServer({ identity = null as string | null }) {
           return json(410, { error: 'Direct messages are not supported. Publish inside a topic-bounded channel.' });
         }
 
+        if (req.method === 'GET' && route[0] === 'messages' && route[1] && route[2] === 'status') {
+          const viewerId = url.searchParams.get('agent') ?? undefined;
+          if (viewerId) registry.auth(viewerId, bearer());
+          return json(200, registry.envelopeStatus(route[1], viewerId));
+        }
+
         if (req.method === 'GET' && route[0] === 'messages') {
           const viewerId = url.searchParams.get('agent') ?? undefined;
           if (viewerId) registry.auth(viewerId, bearer());

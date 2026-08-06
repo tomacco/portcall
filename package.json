@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test:channels": "node tests/test-channels.ts",
     "test:eviction": "node tests/test-eviction.ts",
-    "test:handshake": "node tests/test-handshake-channels.ts"
+    "test:handshake": "node tests/test-handshake-channels.ts",
+    "test:rolemail": "node tests/test-role-mail.ts"
   },
   "engines": {
     "node": ">=23.6"

@@ -41,8 +41,11 @@ try {
 
     function Register-Session {
         $handle = (Invoke-Api -Path '/api/v1/names/suggest?n=1').suggestions[0]
+        # Stable role id per session: a churned vessel's successor resumes the
+        # role - queued mail and channel memberships follow it.
         $reg = Invoke-Api -Method POST -Path '/api/v1/agents' -Body @{
             handle = $handle
+            role   = @{ id = "cc-$sessionId"; name = $handle }
             whoami = @{ harness = 'claude-code'; owner = $owner; purpose = 'PortCall collaboration vessel' }
         }
         @{ id = $reg.id; token = $reg.token; handle = $reg.agent.handle; announced = $false } |

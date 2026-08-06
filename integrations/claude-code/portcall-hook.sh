@@ -38,8 +38,11 @@ api_status() { # method path token -> HTTP status code ("000" if unreachable)
 register() {
   local handle payload reg
   handle="$(api GET '/api/v1/names/suggest?n=1' | jq -r '.suggestions[0]')" || return 1
-  payload="$(jq -n --arg h "$handle" --arg o "$OWNER" \
-    '{handle:$h, whoami:{harness:"claude-code", owner:$o, purpose:"PortCall collaboration vessel"}}')"
+  # A stable role id per session: if this vessel churns (eviction, daemon
+  # hiccup), the next registration resumes the role - queued mail and channel
+  # memberships follow it.
+  payload="$(jq -n --arg h "$handle" --arg o "$OWNER" --arg s "$SESSION_ID" \
+    '{handle:$h, role:{id:("cc-" + $s), name:$h}, whoami:{harness:"claude-code", owner:$o, purpose:"PortCall collaboration vessel"}}')"
   reg="$(api POST /api/v1/agents '' "$payload")" || return 1
   printf '%s' "$reg" | jq '{id, token, handle: .agent.handle, announced: false}' > "$STATE"
   chmod 600 "$STATE"
