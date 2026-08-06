@@ -31,10 +31,14 @@ write_if_changed() { # path <- content on stdin
 
 # --- 1. runtime dir --------------------------------------------------------
 BASE="$CLAUDE_DIR/portcall"
+REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 mkdir -p "$BASE/state"
 write_if_changed "$BASE/portcall-hook.sh" < "$HERE/portcall-hook.sh"
 chmod +x "$BASE/portcall-hook.sh"
-jq -n --arg d "${DAEMON_URL%/}" --arg o "$OWNER" '{daemonUrl: $d, owner: $o}' | write_if_changed "$BASE/config.json"
+write_if_changed "$BASE/portcall-ensure-daemon.sh" < "$HERE/portcall-ensure-daemon.sh"
+chmod +x "$BASE/portcall-ensure-daemon.sh"
+jq -n --arg d "${DAEMON_URL%/}" --arg o "$OWNER" --arg r "$REPO_ROOT" \
+  '{daemonUrl: $d, owner: $o, repo: $r}' | write_if_changed "$BASE/config.json"
 
 # --- 2. the skill ----------------------------------------------------------
 mkdir -p "$CLAUDE_DIR/skills/portcall"
@@ -55,7 +59,8 @@ else
   CURRENT='{}'
 fi
 
-MERGED="$(printf '%s' "$CURRENT" | jq --arg hook "$HOOK" '
+ENSURE="$BASE/portcall-ensure-daemon.sh"
+MERGED="$(printf '%s' "$CURRENT" | jq --arg hook "$HOOK" --arg ensure "$ENSURE" '
   .hooks //= {} |
   .hooks.SessionStart     //= [] |
   .hooks.UserPromptSubmit //= [] |
@@ -65,7 +70,12 @@ MERGED="$(printf '%s' "$CURRENT" | jq --arg hook "$HOOK" '
       .hooks[$evt] += [{hooks: [{type: "command", command: "bash",
         args: [$hook, $evt], timeout: $t, statusMessage: ("PortCall: " + $evt)}]}]
     else . end
-  )')" || { echo "hook merge failed; $SETTINGS left untouched." >&2; exit 1; }
+  ) |
+  # Harbor autostart runs FIRST on SessionStart so registration finds it open.
+  if ([.hooks.SessionStart[].hooks[]? | select(.args? and (.args | index($ensure)))] | length) == 0 then
+    .hooks.SessionStart = [{hooks: [{type: "command", command: "bash",
+      args: [$ensure], timeout: 15, statusMessage: "PortCall: harbor autostart"}]}] + .hooks.SessionStart
+  else . end')" || { echo "hook merge failed; $SETTINGS left untouched." >&2; exit 1; }
 [ -n "$MERGED" ] && printf '%s' "$MERGED" | jq empty 2>/dev/null \
   || { echo "hook merge produced invalid JSON; $SETTINGS left untouched." >&2; exit 1; }
 printf '%s\n' "$MERGED" | write_if_changed "$SETTINGS"
@@ -73,5 +83,6 @@ printf '%s\n' "$MERGED" | write_if_changed "$SETTINGS"
 echo "PortCall Claude Code integration installed:"
 echo "  skill  -> $CLAUDE_DIR/skills/portcall/SKILL.md"
 echo "  hooks  -> $HOOK (SessionStart, UserPromptSubmit, SessionEnd)"
-echo "  config -> $BASE/config.json (daemon $DAEMON_URL, owner $OWNER)"
+echo "  autostart -> $ENSURE (SessionStart, before registration)"
+echo "  config -> $BASE/config.json (daemon $DAEMON_URL, owner $OWNER, repo $REPO_ROOT)"
 echo "  NOTE: restart Claude Code (or open /hooks once) so running sessions pick up the hooks."
