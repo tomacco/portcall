@@ -370,20 +370,28 @@ export class Registry {
     if (!this.ownerKey) {
       throw httpError(503, 'Role confirmations are disabled: the daemon has no owner key. Restart it interactively or set PORTCALL_OWNER_KEY.');
     }
-    if (Date.now() < this.ownerKeyLockedUntil) {
-      throw httpError(429, 'Too many bad owner keys; the harbor master is ignoring confirmations for a minute.');
-    }
+    // The correct key ALWAYS works: a hostile local agent spamming bad keys
+    // must not be able to lock the human owner out (independent-review
+    // finding on PR #18). Brute-force resistance comes from key strength
+    // (128-bit random default), not from this throttle, which only turns
+    // sustained wrong-key hammering into visible 429s.
     const offered = crypto.createHash('sha256').update(String(candidate ?? '')).digest();
     const expected = crypto.createHash('sha256').update(this.ownerKey).digest();
-    if (!crypto.timingSafeEqual(offered, expected)) {
-      this.ownerKeyFailures += 1;
-      if (this.ownerKeyFailures >= OWNER_KEY_LOCKOUT_AFTER) {
-        this.ownerKeyLockedUntil = Date.now() + OWNER_KEY_LOCKOUT_MS;
-        this.ownerKeyFailures = 0;
-      }
-      throw httpError(401, 'Bad owner key.');
+    if (crypto.timingSafeEqual(offered, expected)) {
+      this.ownerKeyFailures = 0;
+      this.ownerKeyLockedUntil = 0;
+      return;
     }
-    this.ownerKeyFailures = 0;
+    this.ownerKeyFailures += 1;
+    if (this.ownerKeyFailures >= OWNER_KEY_LOCKOUT_AFTER) {
+      this.ownerKeyLockedUntil = Date.now() + OWNER_KEY_LOCKOUT_MS;
+      this.ownerKeyFailures = 0;
+      this.bus.emit('owner-key:hammering', { until: this.ownerKeyLockedUntil });
+    }
+    if (Date.now() < this.ownerKeyLockedUntil) {
+      throw httpError(429, 'Too many bad owner keys; wrong-key attempts are throttled for a minute. The correct key still works.');
+    }
+    throw httpError(401, 'Bad owner key.');
   }
 
   private purgeExpiredConfirmations(): void {

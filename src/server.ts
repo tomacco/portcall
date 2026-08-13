@@ -178,11 +178,11 @@ export function createServer({ identity = null as string | null, ownerKey = null
           if (req.method === 'GET' && route[1] === 'confirmations' && route.length === 2) {
             return json(200, { pending: registry.pendingRoleConfirmations() });
           }
-          if (req.method === 'POST' && route[1] === 'confirmations' && route[3] === 'confirm') {
+          if (req.method === 'POST' && route[1] === 'confirmations' && route.length === 4 && route[3] === 'confirm') {
             const body = await readBody();
             return json(200, registry.resolveRoleConfirmation(route[2], body.code, body.ownerKey));
           }
-          if (req.method === 'POST' && route[1] === 'confirmations' && route[3] === 'dismiss') {
+          if (req.method === 'POST' && route[1] === 'confirmations' && route.length === 4 && route[3] === 'dismiss') {
             const body = await readBody();
             return json(200, registry.dismissRoleConfirmation(route[2], body.ownerKey));
           }

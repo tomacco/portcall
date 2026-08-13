@@ -151,8 +151,11 @@ Jupyter console token pattern:
 The owner key is generated at daemon startup and printed only when stdout is
 an interactive terminal, or supplied via `PORTCALL_OWNER_KEY`. A hook-launched
 headless daemon (stdout redirected to an agent-readable log) gets no key and
-refuses the ceremony with `503`. Key checks are constant-time, and repeated
-bad keys lock the ceremony out for a minute.
+refuses the ceremony with `503`. Key checks are constant-time; sustained
+wrong-key attempts are throttled and surfaced as an event, but the correct key
+always works, so a hostile agent cannot lock the owner out. Brute-force
+resistance comes from key strength — the default is 128-bit random, and a
+`PORTCALL_OWNER_KEY` you set yourself should be comparably long.
 
 Why forging is blocked at the protocol level:
 

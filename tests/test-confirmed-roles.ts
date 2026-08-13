@@ -86,25 +86,22 @@ try {
   const stillPending = await request('/api/v1/roles/confirmations');
   assert.equal(stillPending.body.pending.length, 1, 'bad key must not consume the claim');
 
-  // --- lockout after repeated bad keys ---
+  // --- wrong-key hammering gets throttled, but the owner is never locked out ---
   for (let i = 0; i < 4; i++) {
     await request(`/api/v1/roles/confirmations/${confirmationId}/confirm`, {
       method: 'POST', body: JSON.stringify({ code, ownerKey: 'wrong-key' }),
     });
   }
-  const lockedOut = await request(`/api/v1/roles/confirmations/${confirmationId}/confirm`, {
-    method: 'POST', body: JSON.stringify({ code, ownerKey: OWNER_KEY }),
+  const throttled = await request(`/api/v1/roles/confirmations/${confirmationId}/confirm`, {
+    method: 'POST', body: JSON.stringify({ code, ownerKey: 'wrong-key' }),
   });
-  assert.equal(lockedOut.response.status, 429, 'even the right key waits out the lockout');
+  assert.equal(throttled.response.status, 429, 'sustained wrong keys are throttled');
 
-  // Reach into the registry to lift the lockout instead of sleeping 60s.
-  (registry as any).ownerKeyLockedUntil = 0;
-
-  // --- right key + right code: confirmed ---
+  // --- right key + right code: confirmed, even mid-throttle (no DoS on the owner) ---
   const confirmed = await request(`/api/v1/roles/confirmations/${confirmationId}/confirm`, {
     method: 'POST', body: JSON.stringify({ code, ownerKey: OWNER_KEY }),
   });
-  assert.equal(confirmed.response.status, 200);
+  assert.equal(confirmed.response.status, 200, 'the correct key works during wrong-key throttle');
   assert.equal(confirmed.body.agent.role.confirmed, true);
 
   const roster = await request('/api/v1/agents');
