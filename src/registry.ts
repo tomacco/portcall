@@ -27,6 +27,10 @@ const CODE_OPTION_COUNT = 6; // one real code + five decoys
 const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
 const OWNER_KEY_LOCKOUT_AFTER = 5;
 const OWNER_KEY_LOCKOUT_MS = 60_000;
+// After a voided claim (wrong pick), the vessel waits before re-requesting.
+// Blocks the "nag the key-holding human into re-rolling the 1-in-6 dice"
+// brute force: each blind guess now costs 5 minutes, not one click.
+const VOIDED_CLAIM_COOLDOWN_MS = 5 * 60 * 1000;
 
 function makeCode(): string {
   const pick = () => CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
@@ -56,6 +60,10 @@ export class Registry {
   private handshakes = new Map<string, HandshakeEntry>();
   private channels = new Map<string, ChannelRecord>();
   private confirmations = new Map<string, PendingRoleConfirmation>();
+  // Keyed by lowercased role name, not vessel id: re-registering under a new
+  // vessel id must not dodge the cooldown. Only a key-holder's wrong pick can
+  // set it, so it cannot be used to grief a legitimate claimant.
+  private voidedClaimCooldowns = new Map<string, number>();
   feed: Envelope[] = [];
   private bus: Bus;
   private ownerKey: string | null;
@@ -400,6 +408,10 @@ export class Registry {
       throw httpError(503, 'Role confirmations are disabled: the daemon has no owner key. Restart it interactively or set PORTCALL_OWNER_KEY.');
     }
     this.purgeExpiredConfirmations();
+    const cooldownUntil = this.voidedClaimCooldowns.get(agent.role.name.trim().toLowerCase()) ?? 0;
+    if (Date.now() < cooldownUntil) {
+      throw httpError(429, `A voided claim put role "${agent.role.name}" on cooldown. Try again in ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s.`);
+    }
     if (agent.roleConfirmedAt) throw httpError(409, `Role "${agent.role.name}" is already confirmed for this vessel.`);
     const holder = this.confirmedHolderOf(agent.role.name);
     if (holder) {
@@ -476,8 +488,9 @@ export class Registry {
     }
     if (String(code ?? '').trim().toUpperCase() !== pending.code) {
       this.confirmations.delete(confirmationId);
+      this.voidedClaimCooldowns.set(agent.role.name.trim().toLowerCase(), Date.now() + VOIDED_CLAIM_COOLDOWN_MS);
       this.bus.emit('role:confirmation-voided', { id: pending.id, vesselId: pending.vesselId, reason: 'code-mismatch' });
-      throw httpError(409, 'Code mismatch: the claim is voided. The vessel must request confirmation again.');
+      throw httpError(409, 'Code mismatch: the claim is voided and the vessel is on cooldown.');
     }
     const holder = this.confirmedHolderOf(agent.role.name);
     if (holder && holder.id !== agent.id) {

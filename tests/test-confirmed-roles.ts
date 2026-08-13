@@ -148,6 +148,13 @@ try {
   });
   assert.equal(retryVoided.response.status, 410, 'a voided claim cannot be revived');
 
+  // --- a voided claim puts the role name on cooldown (no brute-force re-rolls) ---
+  const cooled = await request('/api/v1/roles/confirmations', {
+    method: 'POST', body: JSON.stringify({ from: mate.id }),
+  }, mate.token);
+  assert.equal(cooled.response.status, 429, 'voided claim triggers a re-request cooldown');
+  (registry as any).voidedClaimCooldowns.clear();
+
   // --- expiry ---
   const mateClaim2 = await request('/api/v1/roles/confirmations', {
     method: 'POST', body: JSON.stringify({ from: mate.id }),

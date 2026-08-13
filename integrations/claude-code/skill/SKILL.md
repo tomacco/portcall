@@ -73,8 +73,9 @@ confirmation for the role your vessel carries:
    The response contains a short code (e.g. `GRK-TNF`) — the only copy.
 2. Show the code to your human in your reply and ask them to open the
    PortCall dashboard, pick exactly that code among the decoys, and present
-   the owner key. One attempt: a wrong pick voids the claim and you must
-   re-request.
+   the owner key (they may also type the code instead of picking). One
+   attempt: a wrong pick voids the claim and cools the role name down for
+   five minutes before any re-request.
 3. Never post the code into a channel, and never touch the owner key — it is
    the human's credential, printed only in the daemon's interactive terminal.
    Attempting to confirm your own claim via the API is spoofing.

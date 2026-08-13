@@ -46,6 +46,10 @@ main { position: relative; z-index: 1; flex: 1; min-height: 0; display: grid; gr
 .claim-codes { display: flex; flex-wrap: wrap; gap: 7px; }
 .code { border: 1px solid var(--line); border-radius: 8px; background: var(--deep-2); color: var(--foam); font: .78rem var(--mono); letter-spacing: .08em; padding: 7px 11px; cursor: pointer; }
 .code:hover { border-color: var(--sun); color: var(--sun); }
+.claim-typed { display: flex; gap: 7px; margin-top: 8px; }
+.claim-typed input { flex: 0 1 220px; min-width: 0; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--deep-2); color: var(--foam); font: .74rem var(--mono); letter-spacing: .08em; }
+.claim-typed button { border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font: .68rem var(--mono); padding: 6px 11px; cursor: pointer; }
+.claim-typed button:hover { color: var(--kelp); border-color: rgba(118,179,157,.5); }
 .dismiss { border: 0; background: transparent; color: var(--muted); font-size: .85rem; cursor: pointer; padding: 4px 6px; }
 .dismiss:hover { color: var(--coral); }
 .pennant { color: var(--sun); margin-left: 5px; }

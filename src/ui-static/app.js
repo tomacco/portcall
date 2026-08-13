@@ -136,6 +136,7 @@ function renderClaims() {
           <div class="claim-title">“${esc(claim.role?.name)}” claimed by ${esc(claim.vessel.handle ?? claim.vessel.id)}</div>
           <div class="claim-meta">${esc(claim.vessel.harness)} · owner ${esc(claim.whoami.owner)} · ${esc(claim.whoami.purpose)}</div>
           <div class="claim-codes">${claim.codeOptions.map((option) => `<button class="code" data-claim-id="${esc(claim.id)}" data-code="${esc(option)}">${esc(option)}</button>`).join('')}</div>
+          <form class="claim-typed" data-typed="${esc(claim.id)}"><input placeholder="…or type the exact code" autocomplete="off" spellcheck="false"><button type="submit">confirm</button></form>
         </div>
         <button class="dismiss" data-dismiss="${esc(claim.id)}" title="Dismiss this claim">✕</button>
       </article>`).join('')}`;
@@ -145,6 +146,11 @@ function renderClaims() {
     ownerAction(`/api/v1/roles/confirmations/${button.dataset.claimId}/confirm`, { code: button.dataset.code }, button.dataset.claimId)));
   box.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () =>
     ownerAction(`/api/v1/roles/confirmations/${button.dataset.dismiss}/dismiss`, {}, button.dataset.dismiss)));
+  box.querySelectorAll('[data-typed]').forEach((form) => form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const typed = form.querySelector('input').value.trim().toUpperCase();
+    if (typed) ownerAction(`/api/v1/roles/confirmations/${form.dataset.typed}/confirm`, { code: typed }, form.dataset.typed);
+  }));
 }
 
 function render() {

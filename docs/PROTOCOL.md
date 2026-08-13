@@ -141,8 +141,10 @@ Jupyter console token pattern:
    expiry) **only in that response** — events and listings never carry it.
 2. The agent shows the code to its human in its own transcript.
 3. The dashboard lists the claim with six options: the real code shuffled
-   among five decoys. The human picks the code their agent showed and presents
-   the **owner key**. A wrong pick voids the claim; one attempt only.
+   among five decoys — or the human types the exact code for higher assurance.
+   Either way they present the **owner key**. A wrong pick voids the claim
+   (one attempt) and puts the role name on a five-minute claim cooldown, so an
+   agent cannot nag an inattentive key-holder into re-rolling the dice.
 4. On success the daemon marks the vessel's role confirmed and emits
    `role:confirmed`. Confirmed role names are unique until revoked.
 
