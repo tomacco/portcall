@@ -115,7 +115,13 @@ export async function handleGatewayRpc(
     const envelope: Envelope = {
       id: 'msg_' + crypto.randomBytes(6).toString('hex'),
       ts: Date.now(),
-      from: { id: agent.id, handle: agent.handle, role: publicRole, actor: agent.actor, vessel: agent.vessel },
+      from: {
+        id: agent.id,
+        handle: agent.handle,
+        role: { ...publicRole, confirmed: !!agent.roleConfirmedAt },
+        actor: agent.actor,
+        vessel: agent.vessel,
+      },
       channelId,
       kind: typeof supplied?.kind === 'string' ? supplied.kind : 'chat',
       body: supplied?.body && typeof supplied.body === 'object'

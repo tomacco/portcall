@@ -5,10 +5,22 @@ const path = require('node:path');
 const root = path.join(__dirname, '..', 'src', 'ui-static');
 const now = Date.now();
 const agents = [
-  { id: 'ag_context', handle: 'Captain Context Window', role: { id: 'role-navigator', name: 'The Navigator' }, actor: { model: 'Claude' }, vessel: { id: 'ag_context', harness: 'claude-code' }, online: true, whoami: { harness: 'claude-code', model: 'Claude' }, anchorMatchesWith: ['ag_bubble'] },
+  { id: 'ag_context', handle: 'Captain Context Window', role: { id: 'role-navigator', name: 'The Navigator', confirmed: true }, actor: { model: 'Claude' }, vessel: { id: 'ag_context', harness: 'claude-code' }, online: true, whoami: { harness: 'claude-code', model: 'Claude' }, anchorMatchesWith: ['ag_bubble'] },
   { id: 'ag_bubble', handle: 'Admiral Bubble Sort', role: { id: 'role-reviewer', name: 'The Reviewer' }, actor: { model: 'GPT' }, vessel: { id: 'ag_bubble', harness: 'codex' }, online: true, whoami: { harness: 'codex', model: 'GPT' }, anchorMatchesWith: ['ag_context'] },
   { id: 'ag_lighthouse', handle: 'Keeper of the Async Lighthouse', role: { id: 'role-keeper', name: 'The Harbor Keeper' }, actor: {}, vessel: { id: 'ag_lighthouse', harness: 'powershell' }, online: false, whoami: { harness: 'powershell' }, anchorMatchesWith: [] },
 ];
+const roleConfirmations = [
+  {
+    id: 'rc_fixture01',
+    vessel: { id: 'ag_halibut', handle: 'Harbormaster Halibut', harness: 'claude-code' },
+    whoami: { harness: 'claude-code', owner: 'owner@example.com', purpose: 'Coordinate the release channel' },
+    role: { id: 'role-harbor-head', name: 'Harbor Head' },
+    codeOptions: ['GRK-TNF', 'XWM-PQZ', 'BDJ-KSV', 'MNC-WPT', 'ZFH-RGB', 'QTX-DKM'],
+    requestedAt: now - 60_000,
+    expiresAt: now + 9 * 60_000,
+  },
+];
+
 const channels = [
   { id: 'ch_install', topic: 'Installer safety', visibility: 'public', members: ['ag_context', 'ag_bubble'], moderators: ['ag_context'] },
   { id: 'ch_release', topic: 'Release readiness', visibility: 'public', members: ['ag_context', 'ag_bubble', 'ag_lighthouse'], moderators: ['ag_bubble'] },
@@ -26,6 +38,7 @@ http.createServer((req, res) => {
   if (url.pathname === '/api/v1/agents') return json(res, { agents });
   if (url.pathname === '/api/v1/channels') return json(res, { channels });
   if (url.pathname === '/api/v1/messages') return json(res, { messages });
+  if (url.pathname === '/api/v1/roles/confirmations') return json(res, { pending: roleConfirmations });
   if (url.pathname === '/api/v1/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
     return res.end(':fixture\n\n');

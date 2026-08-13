@@ -3,6 +3,15 @@ let agents = [];
 let channels = [];
 let feed = [];
 let selectedChannel = null;
+let pendingClaims = [];
+let claimNotice = null; // { claimId | null, text, tone }
+
+const OWNER_KEY_STORE = 'portcall-owner-key';
+const ownerKey = {
+  get: () => localStorage.getItem(OWNER_KEY_STORE) ?? '',
+  set: (value) => localStorage.setItem(OWNER_KEY_STORE, value),
+  clear: () => localStorage.removeItem(OWNER_KEY_STORE),
+};
 
 function esc(value) {
   const node = document.createElement('div');
@@ -55,14 +64,16 @@ async function refreshStatus() {
 
 async function refreshData() {
   try {
-    const [agentData, channelData, messageData] = await Promise.all([
+    const [agentData, channelData, messageData, claimData] = await Promise.all([
       fetch('/api/v1/agents').then((response) => response.json()),
       fetch('/api/v1/channels').then((response) => response.json()),
       fetch('/api/v1/messages?n=400').then((response) => response.json()),
+      fetch('/api/v1/roles/confirmations').then((response) => response.json()),
     ]);
     agents = agentData.agents;
     channels = channelData.channels;
     feed = messageData.messages;
+    pendingClaims = claimData.pending ?? [];
     if (!selectedChannel || !channels.some((channel) => channel.id === selectedChannel)) {
       selectedChannel = channels[0]?.id ?? null;
     }
@@ -71,7 +82,73 @@ async function refreshData() {
   } catch { /* the next event/poll retries */ }
 }
 
+// --- confirmed roles: the owner's side of the code ceremony ---
+// The claiming agent showed its human ONE code; the human picks that code
+// among decoys here and presents the owner key. One attempt; wrong pick voids.
+
+async function ownerAction(url, payload, claimId) {
+  const key = ($('owner-key-input')?.value ?? '').trim() || ownerKey.get();
+  if (!key) {
+    claimNotice = { claimId, text: 'Enter the owner key from the daemon terminal first.', tone: 'warn' };
+    return render();
+  }
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...payload, ownerKey: key }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok) {
+      ownerKey.set(key);
+      claimNotice = { claimId: null, text: payload.code ? 'Role confirmed. The pennant is up.' : 'Done.', tone: 'ok' };
+    } else if (response.status === 401) {
+      ownerKey.clear();
+      claimNotice = { claimId, text: 'Bad owner key. Check the daemon terminal.', tone: 'err' };
+    } else {
+      claimNotice = { claimId, text: body.error ?? `Request failed (${response.status}).`, tone: 'err' };
+    }
+  } catch {
+    claimNotice = { claimId, text: 'Harbor master unreachable.', tone: 'err' };
+  }
+  clearTimeout(ownerAction.noticeTimer);
+  ownerAction.noticeTimer = setTimeout(() => { claimNotice = null; render(); }, 6000);
+  refreshData();
+}
+
+function renderClaims() {
+  const box = $('claims');
+  if (!pendingClaims.length && !claimNotice) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  const needKey = !ownerKey.get();
+  const typedKey = $('owner-key-input')?.value ?? '';
+  box.innerHTML = `
+    <div class="claims-head"><span class="claims-flag">⚑</span>
+      <strong>Role claims awaiting your confirmation</strong>
+      <span class="claims-hint">Pick exactly the code your agent showed you. One attempt — a wrong pick voids the claim.</span>
+    </div>
+    ${claimNotice ? `<div class="claim-notice ${claimNotice.tone}">${esc(claimNotice.text)}</div>` : ''}
+    ${needKey && pendingClaims.length ? `<label class="owner-key">owner key <input id="owner-key-input" type="password" placeholder="from the daemon terminal" autocomplete="off"></label>` : ''}
+    ${pendingClaims.map((claim) => `
+      <article class="claim" data-claim="${esc(claim.id)}">
+        ${avatar(claim.role?.id ?? claim.vessel.id)}
+        <div class="claim-copy">
+          <div class="claim-title">“${esc(claim.role?.name)}” claimed by ${esc(claim.vessel.handle ?? claim.vessel.id)}</div>
+          <div class="claim-meta">${esc(claim.vessel.harness)} · owner ${esc(claim.whoami.owner)} · ${esc(claim.whoami.purpose)}</div>
+          <div class="claim-codes">${claim.codeOptions.map((option) => `<button class="code" data-claim-id="${esc(claim.id)}" data-code="${esc(option)}">${esc(option)}</button>`).join('')}</div>
+        </div>
+        <button class="dismiss" data-dismiss="${esc(claim.id)}" title="Dismiss this claim">✕</button>
+      </article>`).join('')}`;
+  const keyInput = $('owner-key-input');
+  if (keyInput && typedKey) keyInput.value = typedKey;
+  box.querySelectorAll('[data-code]').forEach((button) => button.addEventListener('click', () =>
+    ownerAction(`/api/v1/roles/confirmations/${button.dataset.claimId}/confirm`, { code: button.dataset.code }, button.dataset.claimId)));
+  box.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () =>
+    ownerAction(`/api/v1/roles/confirmations/${button.dataset.dismiss}/dismiss`, {}, button.dataset.dismiss)));
+}
+
 function render() {
+  renderClaims();
   $('channel-count').textContent = channels.length;
   $('crew-count').textContent = agents.filter((agent) => agent.online).length;
   $('channels').innerHTML = channels.length ? channels.map((channel) => `
@@ -86,9 +163,18 @@ function render() {
   $('roster').innerHTML = agents.map((agent) => `
     <div class="crew ${agent.online ? '' : 'offline'}">
       ${avatar(agent.role?.id ?? agent.id)}
-      <div class="crew-copy"><div class="crew-name">${esc(agent.role?.name ?? agent.handle ?? agent.id)}</div>
+      <div class="crew-copy"><div class="crew-name">${esc(agent.role?.name ?? agent.handle ?? agent.id)}${agent.role?.confirmed ? '<span class="pennant" title="Confirmed role — verified by the harbor owner">⚑</span>' : ''}</div>
       <div class="crew-meta">${esc(agent.actor?.model ?? agent.vessel?.harness ?? agent.whoami.harness)} · ${agent.anchorMatchesWith.length ? 'same-anchor report' : 'anchor unknown'}</div></div>
+      ${agent.role?.confirmed ? `<button class="revoke" data-revoke="${esc(agent.id)}" title="Revoke this confirmed role">revoke</button>` : ''}
     </div>`).join('');
+  document.querySelectorAll('[data-revoke]').forEach((button) => button.addEventListener('click', () => {
+    if (!ownerKey.get()) {
+      const key = window.prompt('Owner key (from the daemon terminal):');
+      if (!key) return;
+      ownerKey.set(key.trim());
+    }
+    ownerAction('/api/v1/roles/revoke', { vesselId: button.dataset.revoke }, null);
+  }));
 
   const channel = channels.find((candidate) => candidate.id === selectedChannel);
   $('channel-topic').textContent = channel?.topic ?? 'Choose a channel';
@@ -105,7 +191,7 @@ function render() {
     const text = message.kind === 'chat' && typeof message.body?.text === 'string'
       ? message.body.text : `${message.kind} · ${JSON.stringify(message.body)}`;
     return `<article class="message">${avatar(role?.id ?? message.from.id)}<div>
-      <div class="message-head"><span class="message-name">${esc(name)}</span>${provenance ? `<span class="message-provenance">declares ${esc(provenance)}</span>` : ''}<time class="message-time">${new Date(message.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
+      <div class="message-head"><span class="message-name">${esc(name)}${role?.confirmed ? '<span class="pennant" title="Confirmed role — verified by the harbor owner">⚑</span>' : ''}</span>${provenance ? `<span class="message-provenance">declares ${esc(provenance)}</span>` : ''}<time class="message-time">${new Date(message.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
       <div class="bubble ${message.kind === 'chat' ? '' : 'control'}">${esc(text)}</div>
     </div></article>`;
   }).join('') : '<div class="empty"><span>≈</span>The channel is calm. No signals yet.</div>';
@@ -114,7 +200,8 @@ function render() {
 
 function watch() {
   const events = new EventSource('/api/v1/events');
-  for (const event of ['agent:joined', 'agent:left', 'channel:created', 'channel:updated', 'handshake']) {
+  for (const event of ['agent:joined', 'agent:left', 'channel:created', 'channel:updated', 'handshake',
+    'role:confirmation-requested', 'role:confirmed', 'role:confirmation-voided', 'role:revoked']) {
     events.addEventListener(event, refreshData);
   }
   events.addEventListener('message', (event) => {
