@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import type { ServerResponse } from 'node:http';
 import type { Bus } from './events.ts';
-import type { AgentRecord, ChannelRecord, ChannelVisibility, Envelope, PublicAgent, RegistrationRequest, Whoami } from './types.ts';
+import type { AgentRecord, ChannelRecord, ChannelVisibility, Envelope, PublicAgent, PublicRoleConfirmation, RegistrationRequest, Whoami } from './types.ts';
 
 const ONLINE_WINDOW_MS = 45_000;
 
@@ -17,6 +17,34 @@ const EVICT_AFTER_MS = 24 * 60 * 60 * 1000;
 // THE WHO-YOU-ARE RULE (mandatory — the one hard law of the harbor):
 // every agent must declare harness, owner, and purpose. No anonymous sails.
 const REQUIRED_WHOAMI = ['harness', 'owner', 'purpose'] as const;
+
+// --- confirmed-role ceremony constants ---
+// Code alphabet per RFC 8628 §6.1 spirit: consonants only (no accidental
+// words), minus lookalikes. 6 chars over 19 symbols ≈ 25 bits — plenty for a
+// single-attempt, 10-minute, owner-key-gated ceremony.
+const CODE_ALPHABET = 'BCDFGHJKMNPQRSTVWXZ';
+const CODE_OPTION_COUNT = 6; // one real code + five decoys
+const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
+const OWNER_KEY_LOCKOUT_AFTER = 5;
+const OWNER_KEY_LOCKOUT_MS = 60_000;
+// After a voided claim (wrong pick), the vessel waits before re-requesting.
+// Blocks the "nag the key-holding human into re-rolling the 1-in-6 dice"
+// brute force: each blind guess now costs 5 minutes, not one click.
+const VOIDED_CLAIM_COOLDOWN_MS = 5 * 60 * 1000;
+
+function makeCode(): string {
+  const pick = () => CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
+  return `${pick()}${pick()}${pick()}-${pick()}${pick()}${pick()}`;
+}
+
+interface PendingRoleConfirmation {
+  id: string;
+  vesselId: string;
+  code: string;
+  codeOptions: string[]; // shuffled once at creation; stable across UI polls
+  requestedAt: number;
+  expiresAt: number;
+}
 
 interface HandshakeEntry {
   channelId: string;
@@ -31,11 +59,20 @@ export class Registry {
   private streams = new Map<string, Set<ServerResponse>>();
   private handshakes = new Map<string, HandshakeEntry>();
   private channels = new Map<string, ChannelRecord>();
+  private confirmations = new Map<string, PendingRoleConfirmation>();
+  // Keyed by lowercased role name, not vessel id: re-registering under a new
+  // vessel id must not dodge the cooldown. Only a key-holder's wrong pick can
+  // set it, so it cannot be used to grief a legitimate claimant.
+  private voidedClaimCooldowns = new Map<string, number>();
   feed: Envelope[] = [];
   private bus: Bus;
+  private ownerKey: string | null;
+  private ownerKeyFailures = 0;
+  private ownerKeyLockedUntil = 0;
 
-  constructor(bus: Bus) {
+  constructor(bus: Bus, ownerKey: string | null = null) {
     this.bus = bus;
+    this.ownerKey = ownerKey;
   }
 
   register({ handle, role, whoami, extras, protocols }: RegistrationRequest) {
@@ -135,6 +172,9 @@ export class Registry {
     for (const [key, handshake] of this.handshakes) {
       if (handshake.pair.includes(id)) this.handshakes.delete(key);
     }
+    for (const [key, pending] of this.confirmations) {
+      if (pending.vesselId === id) this.confirmations.delete(key);
+    }
     this.bus.emit('agent:left', { id, handle: agent.handle, ...(reason ? { reason } : {}) });
   }
 
@@ -152,7 +192,7 @@ export class Registry {
       id: agent.id,
       handle: agent.handle,
       whoami: agent.whoami,
-      role: publicRole,
+      role: { ...publicRole, confirmed: !!agent.roleConfirmedAt },
       actor: agent.actor,
       vessel: agent.vessel,
       protocols: Object.keys(agent.protocols),
@@ -317,6 +357,186 @@ export class Registry {
       reportedBy: id,
     });
     return { matched: entry.matched };
+  }
+
+  // --- confirmed roles: the owner's code ceremony ---
+  // A vessel asks for confirmation and receives a short code that only its own
+  // human can relay: the human picks that code among decoys on the dashboard
+  // and presents the owner key. The code binds WHICH claim is confirmed; the
+  // owner key proves WHO confirms. Neither the daemon events nor the pending
+  // listing ever reveal which option is real.
+
+  private assertOwnerKey(candidate: unknown): void {
+    if (!this.ownerKey) {
+      throw httpError(503, 'Role confirmations are disabled: the daemon has no owner key. Restart it interactively or set PORTCALL_OWNER_KEY.');
+    }
+    // The correct key ALWAYS works: a hostile local agent spamming bad keys
+    // must not be able to lock the human owner out (independent-review
+    // finding on PR #18). Brute-force resistance comes from key strength
+    // (128-bit random default), not from this throttle, which only turns
+    // sustained wrong-key hammering into visible 429s.
+    const offered = crypto.createHash('sha256').update(String(candidate ?? '')).digest();
+    const expected = crypto.createHash('sha256').update(this.ownerKey).digest();
+    if (crypto.timingSafeEqual(offered, expected)) {
+      this.ownerKeyFailures = 0;
+      this.ownerKeyLockedUntil = 0;
+      return;
+    }
+    this.ownerKeyFailures += 1;
+    if (this.ownerKeyFailures >= OWNER_KEY_LOCKOUT_AFTER) {
+      this.ownerKeyLockedUntil = Date.now() + OWNER_KEY_LOCKOUT_MS;
+      this.ownerKeyFailures = 0;
+      this.bus.emit('owner-key:hammering', { until: this.ownerKeyLockedUntil });
+    }
+    if (Date.now() < this.ownerKeyLockedUntil) {
+      throw httpError(429, 'Too many bad owner keys; wrong-key attempts are throttled for a minute. The correct key still works.');
+    }
+    throw httpError(401, 'Bad owner key.');
+  }
+
+  private purgeExpiredConfirmations(): void {
+    for (const [key, pending] of this.confirmations) {
+      if (Date.now() >= pending.expiresAt) {
+        this.confirmations.delete(key);
+        this.bus.emit('role:confirmation-voided', { id: pending.id, vesselId: pending.vesselId, reason: 'expired' });
+      }
+    }
+  }
+
+  private confirmedHolderOf(roleName: string): AgentRecord | undefined {
+    const wanted = roleName.trim().toLowerCase();
+    for (const agent of this.agents.values()) {
+      if (agent.roleConfirmedAt && agent.role.name.trim().toLowerCase() === wanted) return agent;
+    }
+    return undefined;
+  }
+
+  requestRoleConfirmation(agent: AgentRecord) {
+    if (!this.ownerKey) {
+      throw httpError(503, 'Role confirmations are disabled: the daemon has no owner key. Restart it interactively or set PORTCALL_OWNER_KEY.');
+    }
+    this.purgeExpiredConfirmations();
+    const cooldownUntil = this.voidedClaimCooldowns.get(agent.role.name.trim().toLowerCase()) ?? 0;
+    if (Date.now() < cooldownUntil) {
+      throw httpError(429, `A voided claim put role "${agent.role.name}" on cooldown. Try again in ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s.`);
+    }
+    if (agent.roleConfirmedAt) throw httpError(409, `Role "${agent.role.name}" is already confirmed for this vessel.`);
+    const holder = this.confirmedHolderOf(agent.role.name);
+    if (holder) {
+      throw httpError(409, `Role "${agent.role.name}" is already confirmed for ${holder.handle ?? holder.id}. The owner must revoke it first.`);
+    }
+    // One live claim per vessel: a re-request replaces (and re-codes) it.
+    for (const [key, pending] of this.confirmations) {
+      if (pending.vesselId === agent.id) this.confirmations.delete(key);
+    }
+    const code = makeCode();
+    const options = new Set<string>([code]);
+    while (options.size < CODE_OPTION_COUNT) options.add(makeCode());
+    const codeOptions = [...options];
+    for (let i = codeOptions.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [codeOptions[i], codeOptions[j]] = [codeOptions[j], codeOptions[i]];
+    }
+    const pending: PendingRoleConfirmation = {
+      id: 'rc_' + crypto.randomBytes(6).toString('hex'),
+      vesselId: agent.id,
+      code,
+      codeOptions,
+      requestedAt: Date.now(),
+      expiresAt: Date.now() + CONFIRMATION_TTL_MS,
+    };
+    this.confirmations.set(pending.id, pending);
+    // The event announces THAT a claim exists — never the code or options.
+    this.bus.emit('role:confirmation-requested', {
+      id: pending.id,
+      vesselId: agent.id,
+      handle: agent.handle,
+      role: { id: agent.role.id, name: agent.role.name },
+      expiresAt: pending.expiresAt,
+    });
+    return {
+      confirmationId: pending.id,
+      code,
+      expiresAt: pending.expiresAt,
+      instructions: 'Show this code to your human owner. They confirm it on the PortCall dashboard by picking this exact code and presenting the owner key. One attempt only; a wrong pick voids the claim.',
+    };
+  }
+
+  pendingRoleConfirmations(): PublicRoleConfirmation[] {
+    this.purgeExpiredConfirmations();
+    const out: PublicRoleConfirmation[] = [];
+    for (const pending of this.confirmations.values()) {
+      const agent = this.agents.get(pending.vesselId);
+      if (!agent) continue;
+      const { contextRef: _privateContextRef, ...publicRole } = agent.role;
+      out.push({
+        id: pending.id,
+        vessel: { id: agent.id, handle: agent.handle, harness: agent.vessel.harness },
+        whoami: agent.whoami,
+        role: publicRole,
+        codeOptions: pending.codeOptions,
+        requestedAt: pending.requestedAt,
+        expiresAt: pending.expiresAt,
+      });
+    }
+    return out;
+  }
+
+  resolveRoleConfirmation(confirmationId: string, code: unknown, ownerKey: unknown) {
+    // Key first: only the owner may spend the single code attempt. A bad key
+    // neither reveals anything about the code nor voids the claim.
+    this.assertOwnerKey(ownerKey);
+    this.purgeExpiredConfirmations();
+    const pending = this.confirmations.get(confirmationId);
+    if (!pending) throw httpError(410, 'That confirmation is gone (expired, voided, or never existed).');
+    const agent = this.agents.get(pending.vesselId);
+    if (!agent) {
+      this.confirmations.delete(confirmationId);
+      throw httpError(410, 'The claiming vessel left the harbor.');
+    }
+    if (String(code ?? '').trim().toUpperCase() !== pending.code) {
+      this.confirmations.delete(confirmationId);
+      this.voidedClaimCooldowns.set(agent.role.name.trim().toLowerCase(), Date.now() + VOIDED_CLAIM_COOLDOWN_MS);
+      this.bus.emit('role:confirmation-voided', { id: pending.id, vesselId: pending.vesselId, reason: 'code-mismatch' });
+      throw httpError(409, 'Code mismatch: the claim is voided and the vessel is on cooldown.');
+    }
+    const holder = this.confirmedHolderOf(agent.role.name);
+    if (holder && holder.id !== agent.id) {
+      this.confirmations.delete(confirmationId);
+      throw httpError(409, `Role "${agent.role.name}" was confirmed for ${holder.handle ?? holder.id} in the meantime. Revoke it first.`);
+    }
+    this.confirmations.delete(confirmationId);
+    agent.roleConfirmedAt = Date.now();
+    this.bus.emit('role:confirmed', {
+      vesselId: agent.id,
+      handle: agent.handle,
+      role: { id: agent.role.id, name: agent.role.name },
+      confirmedAt: agent.roleConfirmedAt,
+    });
+    return { ok: true, agent: this.publicView(agent) };
+  }
+
+  dismissRoleConfirmation(confirmationId: string, ownerKey: unknown) {
+    this.assertOwnerKey(ownerKey);
+    const pending = this.confirmations.get(confirmationId);
+    if (!pending) throw httpError(410, 'That confirmation is gone (expired, voided, or never existed).');
+    this.confirmations.delete(confirmationId);
+    this.bus.emit('role:confirmation-voided', { id: pending.id, vesselId: pending.vesselId, reason: 'dismissed' });
+    return { ok: true };
+  }
+
+  revokeRoleConfirmation(vesselId: unknown, ownerKey: unknown) {
+    this.assertOwnerKey(ownerKey);
+    const agent = typeof vesselId === 'string' ? this.agents.get(vesselId) : undefined;
+    if (!agent) throw httpError(404, `No such agent: ${vesselId}`);
+    if (!agent.roleConfirmedAt) throw httpError(409, 'That vessel holds no confirmed role.');
+    delete agent.roleConfirmedAt;
+    this.bus.emit('role:revoked', {
+      vesselId: agent.id,
+      handle: agent.handle,
+      role: { id: agent.role.id, name: agent.role.name },
+    });
+    return { ok: true, agent: this.publicView(agent) };
   }
 
   anchorMatches(id: string, viewerId?: string): string[] {

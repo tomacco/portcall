@@ -16,7 +16,10 @@ export interface RoleIdentity {
 }
 
 /** Safe social projection. Storage locations remain private to the vessel. */
-export type PublicRoleIdentity = Omit<RoleIdentity, 'contextRef'>;
+export type PublicRoleIdentity = Omit<RoleIdentity, 'contextRef'> & {
+  /** True when the harbor owner confirmed this vessel's claim to the role. */
+  confirmed?: boolean;
+};
 
 /** The transient process carrying a role into the harbor. */
 export interface VesselIdentity {
@@ -41,6 +44,21 @@ export interface AgentRecord {
   registeredAt: number;
   lastSeen: number;
   token: string;
+  /** Set when the harbor owner confirmed this vessel's role claim. */
+  roleConfirmedAt?: number;
+}
+
+/** A role claim awaiting the owner's code ceremony. The `code` never leaves
+ * the claiming vessel's registration response; projections carry only the
+ * shuffled `codeOptions`. */
+export interface PublicRoleConfirmation {
+  id: string;
+  vessel: { id: string; handle: string | null; harness: string };
+  whoami: Whoami;
+  role: PublicRoleIdentity;
+  codeOptions: string[];
+  requestedAt: number;
+  expiresAt: number;
 }
 
 export interface PublicAgent {

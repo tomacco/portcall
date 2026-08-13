@@ -125,6 +125,71 @@ locally; matching daemon reports do not establish instruction authority. `hs/*`
 control envelopes still travel inside a channel and name their intended
 `peerId`; other channel members ignore them.
 
+## Confirmed roles
+
+Roles are self-asserted and grant no authority, but an authoritative-sounding
+name ("Harbor Head") still carries social weight. A **confirmed** role is one
+whose claim the human harbor owner verified through a code ceremony; the
+roster, envelopes, and UI then carry `role.confirmed: true` and a pennant.
+
+The ceremony blends RFC 8628 (device-authorization user codes), Bluetooth
+numeric comparison (single-attempt short authentication string), and the
+Jupyter console token pattern:
+
+1. The vessel calls `POST /api/v1/roles/confirmations` (bearer auth). The
+   daemon returns a short code (`XXX-XXX`, consonant alphabet, 10-minute
+   expiry) **only in that response** — events and listings never carry it.
+2. The agent shows the code to its human in its own transcript.
+3. The dashboard lists the claim with six options: the real code shuffled
+   among five decoys — or the human types the exact code for higher assurance.
+   Either way they present the **owner key**. A wrong pick voids the claim
+   (one attempt) and puts the role name on a five-minute claim cooldown, so an
+   agent cannot nag an inattentive key-holder into re-rolling the dice.
+4. On success the daemon marks the vessel's role confirmed and emits
+   `role:confirmed`. Confirmed role names are unique until revoked.
+
+The owner key is generated at daemon startup and printed only when stdout is
+an interactive terminal, or supplied via `PORTCALL_OWNER_KEY`. A hook-launched
+headless daemon (stdout redirected to an agent-readable log) gets no key and
+refuses the ceremony with `503`. Key checks are constant-time; sustained
+wrong-key attempts are throttled and surfaced as an event, but the correct key
+always works, so a hostile agent cannot lock the owner out. Brute-force
+resistance comes from key strength — the default is 128-bit random, and a
+`PORTCALL_OWNER_KEY` you set yourself should be comparably long.
+
+Why forging is blocked at the protocol level:
+
+- The code binds *which* claim is confirmed. It is returned only to the
+  claiming vessel, is single-use and expiring, so a third-party vessel cannot
+  confirm (or usefully guess at) someone else's claim.
+- The owner key proves *who* confirms. The claiming agent knows its own code
+  but never the key, so it cannot self-confirm through the API; a bad key
+  neither spends nor voids the code attempt.
+- The decoy pick proves the human actually read the claiming agent's
+  transcript, not just clicked "approve".
+
+Honest boundary, same spirit as Flag Check: PortCall runs as an ordinary local
+process. Any same-OS-user process with arbitrary code execution could read the
+interactive terminal's scrollback, patch the daemon, or read browser storage.
+Confirmation therefore defends against protocol-level impersonation and
+social-engineering-by-default, and makes deeper forgery require overt,
+detectable tampering — it is not a cryptographic guarantee against a
+same-privilege attacker. Run the daemon under a separate OS user if that
+stronger boundary is required.
+
+Lifecycle: confirmation binds to the authenticated vessel id and dies with it
+(deregistration, eviction, daemon restart). Re-registering under the same role
+id restarts from "claimed". The owner may revoke at any time
+(`POST /api/v1/roles/revoke`) or dismiss pending claims.
+
+| Route | Purpose |
+|---|---|
+| `POST /api/v1/roles/confirmations` | vessel requests confirmation `{from}`; code in response only |
+| `GET /api/v1/roles/confirmations` | pending claims with shuffled `codeOptions` |
+| `POST /api/v1/roles/confirmations/:id/confirm` | owner picks `{code, ownerKey}`; one attempt |
+| `POST /api/v1/roles/confirmations/:id/dismiss` | owner dismisses `{ownerKey}` |
+| `POST /api/v1/roles/revoke` | owner revokes `{vesselId, ownerKey}` |
+
 ## A2A
 
 Outbound channel envelopes can be delivered to a member's declared A2A

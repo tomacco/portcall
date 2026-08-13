@@ -35,9 +35,9 @@ export interface ServerState {
   anchoredTo: string | null;
 }
 
-export function createServer({ identity = null as string | null }) {
+export function createServer({ identity = null as string | null, ownerKey = null as string | null }) {
   const bus = new Bus();
-  const registry = new Registry(bus);
+  const registry = new Registry(bus, ownerKey);
   const startedAt = Date.now();
   const state: ServerState = { identity, anchoredTo: null };
 
@@ -56,7 +56,13 @@ export function createServer({ identity = null as string | null }) {
     const envelope: Envelope = {
       id: 'msg_' + crypto.randomBytes(6).toString('hex'),
       ts: Date.now(),
-      from: { id: fromAgent.id, handle: fromAgent.handle, role: publicRole, actor: fromAgent.actor, vessel: fromAgent.vessel },
+      from: {
+        id: fromAgent.id,
+        handle: fromAgent.handle,
+        role: { ...publicRole, confirmed: !!fromAgent.roleConfirmedAt },
+        actor: fromAgent.actor,
+        vessel: fromAgent.vessel,
+      },
       channelId,
       kind: typeof kind === 'string' && kind ? kind : 'chat',
       body: body ?? {},
@@ -158,7 +164,32 @@ export function createServer({ identity = null as string | null }) {
             publicChannels: registry.listChannels().length,
             adapters: listAdapters(),
             providers: listProviders(),
+            roleConfirmations: ownerKey ? 'enabled' : 'disabled',
           });
+        }
+
+        // --- confirmed roles: owner code ceremony ---
+        if (route[0] === 'roles') {
+          if (req.method === 'POST' && route[1] === 'confirmations' && route.length === 2) {
+            const body = await readBody();
+            const agent = registry.auth(body.from, bearer());
+            return json(201, registry.requestRoleConfirmation(agent));
+          }
+          if (req.method === 'GET' && route[1] === 'confirmations' && route.length === 2) {
+            return json(200, { pending: registry.pendingRoleConfirmations() });
+          }
+          if (req.method === 'POST' && route[1] === 'confirmations' && route.length === 4 && route[3] === 'confirm') {
+            const body = await readBody();
+            return json(200, registry.resolveRoleConfirmation(route[2], body.code, body.ownerKey));
+          }
+          if (req.method === 'POST' && route[1] === 'confirmations' && route.length === 4 && route[3] === 'dismiss') {
+            const body = await readBody();
+            return json(200, registry.dismissRoleConfirmation(route[2], body.ownerKey));
+          }
+          if (req.method === 'POST' && route[1] === 'revoke' && route.length === 2) {
+            const body = await readBody();
+            return json(200, registry.revokeRoleConfirmation(body.vesselId, body.ownerKey));
+          }
         }
 
         if (req.method === 'GET' && route[0] === 'names' && route[1] === 'suggest') {
