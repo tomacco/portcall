@@ -292,7 +292,9 @@ export class Registry {
 
   // One channel's recent history, for late joiners and for catching up after a gap.
   // `since` is a message id (exclusive) or an epoch-ms timestamp (exclusive).
-  channelHistory(channelId: string, viewerId: string | undefined, since: string | null, n: number): Envelope[] {
+  // With `since` the page runs forward (the next n); without it, the newest n. `more` says
+  // whether retained messages were left out, so a caller paging forward never skips any.
+  channelHistory(channelId: string, viewerId: string | undefined, since: string | null, n: number): { messages: Envelope[]; more: boolean } {
     this.channel(channelId);
     if (!this.canObserveChannel(channelId, viewerId)) throw httpError(403, 'Join the channel to read its history.');
     let messages = this.feed.filter((envelope) => envelope.channelId === channelId);
@@ -302,7 +304,9 @@ export class Registry {
       else if (/^\d+$/.test(since)) messages = messages.filter((envelope) => envelope.ts > Number(since));
       else throw httpError(404, `No message ${since} in this channel's retained history.`);
     }
-    return messages.slice(-Math.max(1, Math.min(n, 500)));
+    const size = Math.max(1, Math.min(n, 500));
+    const page = since ? messages.slice(0, size) : messages.slice(-size);
+    return { messages: page, more: messages.length > page.length };
   }
 
   // --- messaging (adapters call these) ---

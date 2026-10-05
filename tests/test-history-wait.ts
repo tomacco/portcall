@@ -64,7 +64,15 @@ try {
   history = await request(`/api/v1/channels/${pub}/messages?agent=${late.id}&since=${first}`, {}, late.token);
   assert.deepEqual(texts(history.body.messages), ['proposal'], 'since=<message id> is exclusive');
   history = await request(`/api/v1/channels/${pub}/messages?agent=${late.id}&n=1`, {}, late.token);
-  assert.deepEqual(texts(history.body.messages), ['proposal'], 'n keeps the most recent');
+  assert.deepEqual(texts(history.body.messages), ['proposal'], 'without since, n keeps the most recent');
+  assert.equal(history.body.more, true, 'more flags the older message left out');
+  await say(lead, pub, 'third');
+  history = await request(`/api/v1/channels/${pub}/messages?agent=${late.id}&since=${first}&n=1`, {}, late.token);
+  assert.deepEqual(texts(history.body.messages), ['proposal'], 'with since, n pages forward: the next message, not the newest');
+  assert.equal(history.body.more, true, 'more says the page stopped early');
+  history = await request(`/api/v1/channels/${pub}/messages?agent=${late.id}&since=${first}&n=5`, {}, late.token);
+  assert.deepEqual(texts(history.body.messages), ['proposal', 'third']);
+  assert.equal(history.body.more, false, 'a complete page has more=false');
   history = await request(`/api/v1/channels/${pub}/messages?agent=${late.id}&since=msg_nope`, {}, late.token);
   assert.equal(history.response.status, 404, 'an unknown since id is an explicit error, not an empty page');
 

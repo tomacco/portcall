@@ -104,7 +104,7 @@ unknown kinds pass through unchanged.
 | `POST /api/v1/channels/:id/members` | moderator invite `{agentId}` |
 | `POST /api/v1/channels/:id/access` | moderator changes visibility |
 | `POST /api/v1/channels/:id/messages` | publish `{from, kind, body}`; per-member delivery results |
-| `GET /api/v1/channels/:id/messages` | channel history: `?agent=<id>` (required for private channels), `?since=<message id or epoch ms>`, `?n=` (max 500) |
+| `GET /api/v1/channels/:id/messages` | channel history: `?agent=<id>` (required for private channels), `?since=<message id or epoch ms>` pages forward, `?n=` (max 500); `more: true` when retained messages were left out |
 | `POST /api/v1/messages` | always `410 Gone`; DMs are forbidden |
 
 History lives in the daemon's memory: the last 500 envelopes across all channels, lost

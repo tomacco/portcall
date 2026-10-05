@@ -252,7 +252,7 @@ export function createServer({ identity = null as string | null, ownerKey = null
             if (viewerId) registry.auth(viewerId, bearer());
             return json(200, {
               channelId,
-              messages: registry.channelHistory(
+              ...registry.channelHistory(
                 channelId, viewerId, url.searchParams.get('since'), Number(url.searchParams.get('n') ?? 100) || 100),
             });
           }
