@@ -247,6 +247,15 @@ export function createServer({ identity = null as string | null, ownerKey = null
             const { envelope, deliveries } = await publishToChannel(agent, channelId, body);
             return json(202, { id: envelope.id, channelId, deliveries });
           }
+          if (req.method === 'GET' && route[2] === 'messages') {
+            const viewerId = url.searchParams.get('agent') ?? undefined;
+            if (viewerId) registry.auth(viewerId, bearer());
+            return json(200, {
+              channelId,
+              messages: registry.channelHistory(
+                channelId, viewerId, url.searchParams.get('since'), Number(url.searchParams.get('n') ?? 100) || 100),
+            });
+          }
           if (req.method === 'GET' && route.length === 2) {
             const channel = registry.channel(channelId);
             if (channel.visibility === 'private') {
@@ -264,7 +273,14 @@ export function createServer({ identity = null as string | null, ownerKey = null
             return json(200, registry.heartbeat(id, bearer()));
           }
           if (req.method === 'GET' && route[2] === 'inbox') {
-            return json(200, { envelopes: registry.drainInbox(id, bearer()) });
+            // ?wait=N long-polls up to N seconds (max 60) for the next envelope.
+            const waitSec = Math.min(Math.max(Number(url.searchParams.get('wait') ?? 0) || 0, 0), 60);
+            if (!waitSec) return json(200, { envelopes: registry.drainInbox(id, bearer()) });
+            const { done, cancel } = registry.waitInbox(id, bearer(), waitSec * 1000);
+            res.on('close', cancel);
+            const envelopes = await done;
+            if (res.destroyed || res.writableEnded) { registry.requeue(id, envelopes); return; }
+            return json(200, { envelopes });
           }
           if (req.method === 'GET' && route[2] === 'stream') {
             return registry.attachStream(id, bearer(), res);

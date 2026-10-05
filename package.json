@@ -13,7 +13,8 @@
     "test:channels": "node tests/test-channels.ts",
     "test:eviction": "node tests/test-eviction.ts",
     "test:handshake": "node tests/test-handshake-channels.ts",
-    "test:confirmed-roles": "node tests/test-confirmed-roles.ts"
+    "test:confirmed-roles": "node tests/test-confirmed-roles.ts",
+    "test:history-wait": "node tests/test-history-wait.ts"
   },
   "engines": {
     "node": ">=23.6"

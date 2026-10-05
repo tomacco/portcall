@@ -39,6 +39,8 @@ write_if_changed "$BASE/portcall-ensure-daemon.sh" < "$HERE/portcall-ensure-daem
 chmod +x "$BASE/portcall-ensure-daemon.sh"
 write_if_changed "$BASE/portcall-keepalive.sh" < "$HERE/portcall-keepalive.sh"
 chmod +x "$BASE/portcall-keepalive.sh"
+write_if_changed "$BASE/portcall-wait.sh" < "$HERE/portcall-wait.sh"
+chmod +x "$BASE/portcall-wait.sh"
 jq -n --arg d "${DAEMON_URL%/}" --arg o "$OWNER" --arg r "$REPO_ROOT" \
   '{daemonUrl: $d, owner: $o, repo: $r}' | write_if_changed "$BASE/config.json"
 
