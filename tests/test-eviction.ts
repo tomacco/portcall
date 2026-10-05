@@ -81,4 +81,14 @@ const voluntary = events.filter((e) => e.type === 'agent:left').at(-1);
 assert.equal(voluntary!.data.id, guest.id);
 assert.ok(!('reason' in voluntary!.data), 'voluntary leave carries no reason');
 
+// -- a vessel blocked in a long-poll inbox wait is alive, not a ghost --------
+const poller = registry.register({ handle: 'Poller', whoami });
+const wait = registry.waitInbox(poller.id, poller.token, 60_000);
+registry.get(poller.id)!.lastSeen = Date.now() - DAY_AND_HOUR;
+assert.deepEqual(registry.evictStale(), [], 'long-polling vessel survives the sweep');
+wait.cancel();
+assert.deepEqual(await wait.done, [], 'cancel releases the waiter with nothing');
+registry.get(poller.id)!.lastSeen = Date.now() - DAY_AND_HOUR;
+assert.deepEqual(registry.evictStale(), [poller.id], 'once the wait ends, silence counts again');
+
 console.log('PASS: stale ghosts evicted with full cleanup; live and attached agents untouched');

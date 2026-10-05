@@ -53,7 +53,9 @@ register() {
 ensure_keepalive() {
   [ -f "$BASE/portcall-keepalive.sh" ] || return 0
   pgrep -f "portcall-keepalive.sh $STATE" >/dev/null 2>&1 && return 0
-  ( setsid nohup bash "$BASE/portcall-keepalive.sh" "$STATE" '' "$PPID" >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
+  # setsid is Linux-only; on macOS the subshell + nohup still detach the keepalive.
+  local setsid_bin; setsid_bin="$(command -v setsid || true)"
+  ( $setsid_bin nohup bash "$BASE/portcall-keepalive.sh" "$STATE" '' "$PPID" >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
 }
 
 case "$EVENT" in

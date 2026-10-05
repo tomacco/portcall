@@ -57,6 +57,9 @@ export class Registry {
   private agents = new Map<string, AgentRecord>();
   private inboxes = new Map<string, Envelope[]>();
   private streams = new Map<string, Set<ServerResponse>>();
+  // Long-poll inbox waiters (GET /agents/:id/inbox?wait=N). A waiter takes the whole inbox
+  // when an envelope arrives, so the inbox stays the single consuming path.
+  private waiters = new Map<string, Set<(envelopes: Envelope[]) => void>>();
   private handshakes = new Map<string, HandshakeEntry>();
   private channels = new Map<string, ChannelRecord>();
   private confirmations = new Map<string, PendingRoleConfirmation>();
@@ -146,6 +149,7 @@ export class Registry {
     for (const agent of [...this.agents.values()]) {
       if (Date.now() - agent.lastSeen < maxSilenceMs) continue;
       if (this.streams.get(agent.id)?.size) continue; // attached = alive
+      if (this.waiters.get(agent.id)?.size) continue; // long-polling = alive
       this.removeAgent(agent, 'evicted');
       evicted.push(agent.id);
     }
@@ -161,6 +165,8 @@ export class Registry {
       }
       this.streams.delete(id);
     }
+    for (const wake of this.waiters.get(id) ?? []) wake([]);
+    this.waiters.delete(id);
     this.agents.delete(id);
     this.inboxes.delete(id);
     for (const channel of this.channels.values()) {
@@ -284,6 +290,25 @@ export class Registry {
     return this.feed.filter((envelope) => this.canObserveChannel(envelope.channelId, viewerId));
   }
 
+  // One channel's recent history, for late joiners and for catching up after a gap.
+  // `since` is a message id (exclusive) or an epoch-ms timestamp (exclusive).
+  // With `since` the page runs forward (the next n); without it, the newest n. `more` says
+  // whether retained messages were left out, so a caller paging forward never skips any.
+  channelHistory(channelId: string, viewerId: string | undefined, since: string | null, n: number): { messages: Envelope[]; more: boolean } {
+    this.channel(channelId);
+    if (!this.canObserveChannel(channelId, viewerId)) throw httpError(403, 'Join the channel to read its history.');
+    let messages = this.feed.filter((envelope) => envelope.channelId === channelId);
+    if (since) {
+      const at = messages.findIndex((envelope) => envelope.id === since);
+      if (at >= 0) messages = messages.slice(at + 1);
+      else if (/^\d+$/.test(since)) messages = messages.filter((envelope) => envelope.ts > Number(since));
+      else throw httpError(404, `No message ${since} in this channel's retained history.`);
+    }
+    const size = Math.max(1, Math.min(n, 500));
+    const page = since ? messages.slice(0, size) : messages.slice(-size);
+    return { messages: page, more: messages.length > page.length };
+  }
+
   // --- messaging (adapters call these) ---
 
   recordEnvelope(envelope: Envelope): void {
@@ -297,6 +322,13 @@ export class Registry {
     if (!box) throw httpError(404, `No such agent: ${id}`);
     box.push(envelope);
     if (box.length > 200) box.shift();
+    const waiting = this.waiters.get(id);
+    if (waiting?.size) {
+      const [wake] = waiting;
+      waiting.delete(wake);
+      this.inboxes.set(id, []);
+      wake(box);
+    }
     const streams = this.streams.get(id);
     if (streams) {
       const line = `event: envelope\ndata: ${JSON.stringify(envelope)}\n\n`;
@@ -311,6 +343,33 @@ export class Registry {
     const box = this.inboxes.get(id) ?? [];
     this.inboxes.set(id, []);
     return box;
+  }
+
+  // Drain now if anything is queued; otherwise hold up to waitMs for the next envelope.
+  // The caller must call `cancel` if its client disconnects, and `requeue` envelopes it
+  // could not deliver, so a dropped long-poll never loses a message.
+  waitInbox(id: string, token: string, waitMs: number): { done: Promise<Envelope[]>; cancel: () => void } {
+    this.auth(id, token);
+    const now = this.inboxes.get(id) ?? [];
+    if (now.length || waitMs <= 0) {
+      this.inboxes.set(id, []);
+      return { done: Promise.resolve(now), cancel: () => {} };
+    }
+    if (!this.waiters.has(id)) this.waiters.set(id, new Set());
+    const set = this.waiters.get(id)!;
+    let wake!: (envelopes: Envelope[]) => void;
+    let timer: ReturnType<typeof setTimeout>;
+    const done = new Promise<Envelope[]>((resolve) => {
+      wake = (envelopes) => { clearTimeout(timer); set.delete(wake); resolve(envelopes); };
+      timer = setTimeout(() => wake([]), waitMs);
+    });
+    set.add(wake);
+    return { done, cancel: () => wake([]) };
+  }
+
+  requeue(id: string, envelopes: Envelope[]): void {
+    const box = this.inboxes.get(id);
+    if (box && envelopes.length) this.inboxes.set(id, [...envelopes, ...box].slice(-200));
   }
 
   attachStream(id: string, token: string, res: ServerResponse): void {
