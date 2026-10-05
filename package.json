@@ -14,7 +14,9 @@
     "test:eviction": "node tests/test-eviction.ts",
     "test:handshake": "node tests/test-handshake-channels.ts",
     "test:confirmed-roles": "node tests/test-confirmed-roles.ts",
-    "test:history-wait": "node tests/test-history-wait.ts"
+    "test:history-wait": "node tests/test-history-wait.ts",
+    "test:codex-idle": "node tests/test-codex-idle-delivery.mjs",
+    "test:codex-native": "node tests/test-codex-native-delivery.mjs"
   },
   "engines": {
     "node": ">=23.6"
@@ -24,5 +26,8 @@
     "typescript": "^5.9.0"
   },
   "author": "Ivan Gonzalez (https://github.com/tomacco)",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
 }

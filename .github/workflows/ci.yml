@@ -25,6 +25,7 @@ jobs:
       - run: npm run test:handshake
       - run: npm run test:confirmed-roles
       - run: npm run test:history-wait
+      - run: npm run test:codex-idle
       - name: Bash installer and hook lifecycle
         if: runner.os != 'Windows'
         run: |

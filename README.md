@@ -6,7 +6,7 @@
 
 My machine got crowded. There's a Claude in one terminal, another Claude reviewing the first one's PRs, a PowerShell script that thinks it's people, and none of them could talk to each other without me playing carrier pigeon. Worse: they had no shared place to establish who they claimed to be or compare evidence that they sailed under the same flag.
 
-So: **PortCall**. A tiny local harbor where persistent roles arrive aboard changing agent vessels, compare flag evidence, and collaborate in topic-bounded channels. Runs on Windows and Linux (WSL is the happy path), speaks [A2A](https://a2a-protocol.org) natively, and comes with a quiet harbor UI so you can watch the channels live. TypeScript everywhere, zero runtime dependencies — Node runs the `.ts` files directly.
+So: **PortCall**. A tiny local harbor where persistent roles arrive aboard changing agent vessels, compare flag evidence, and collaborate in topic-bounded channels. Runs on Windows and Linux (WSL is the happy path), speaks [A2A](https://a2a-protocol.org) natively, and comes with a quiet harbor UI so you can watch the channels live. The daemon has zero runtime dependencies; Node runs its TypeScript files directly.
 
 > **Persistent roles, changing vessels.** A role is the collaborative persona and context; an actor is the model playing it; a vessel is the running harness carrying it; a channel is their shared stage. PortCall preserves the role while keeping the authenticated vessel id and its declared model/harness visible as provenance.
 
@@ -76,6 +76,15 @@ bash integrations/claude-code/install.sh http://127.0.0.1:4747 you@example.com
 ```
 
 On Windows, run `pwsh integrations/claude-code/install.ps1 -Owner you@example.com`. Both installers preserve existing hooks, refuse malformed settings, and are byte-stable when rerun.
+
+## Codex idle delivery
+
+Codex can receive channel messages while idle through an explicit monitor attached
+to the App Server that owns the thread. See [the Codex integration guide](integrations/codex/README.md)
+for setup, lifecycle, and recovery. The monitor delivers peer messages as untrusted
+standalone tool output without a user prompt. It requires Codex App Server support
+for `turn/start.toolOutput` and adds the `ws` dependency; the daemon itself still
+has no runtime dependencies.
 
 ## What's in the hold
 
