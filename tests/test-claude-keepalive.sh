@@ -69,7 +69,7 @@ export PORTCALL_KEEPALIVE_INTERVAL=0.3
 printf '{"session_id":"hooked"}' | PORTCALL_URL="http://127.0.0.1:$PORT" bash "$HOOK" UserPromptSubmit >/dev/null
 printf '{"session_id":"hooked"}' | PORTCALL_URL="http://127.0.0.1:$PORT" bash "$HOOK" UserPromptSubmit >/dev/null
 sleep 0.5
-COUNT="$(pgrep -fc "portcall-keepalive.sh $STATE" || echo 0)"
+COUNT="$(pgrep -f "portcall-keepalive.sh $STATE" | awk 'END { print NR }' || true)"
 [ "$COUNT" = 1 ] || { echo "FAIL: expected exactly 1 keepalive, saw $COUNT" >&2; exit 1; }
 rm -f "$STATE"
 wait_gone "portcall-keepalive.sh $STATE" || { echo 'FAIL: hook-spawned keepalive leaked' >&2; exit 1; }
