@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
       - run: npm run test:confirmed-roles
       - run: npm run test:history-wait
       - name: Bash installer and hook lifecycle
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         run: |
           bash tests/test-claude-install.sh
           bash tests/test-claude-hook.sh
